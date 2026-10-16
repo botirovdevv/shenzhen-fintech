@@ -6,6 +6,7 @@ import { Platform, Share, View } from 'react-native';
 import { Icon, type IconName } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, ErrorRow, haptic, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
+import { api } from '@/lib/api';
 import { formatAmount, formatTime } from '@/lib/format';
 import { useActions, useAudit, useKillSwitch, usePermissions, useTransactions, useUpdatePermissions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
@@ -44,8 +45,8 @@ export default function Activity() {
   };
 
   const exportLog = async () => {
-    const json = JSON.stringify(audit.data?.items ?? [], null, 2);
     try {
+      const json = JSON.stringify(await api.auditExport(), null, 2);
       await Share.share({ title: 'audit-log.json', message: json });
       setExported(true);
     } catch {

@@ -130,6 +130,12 @@ export const api = {
   updatePermissions: (b: UpdatePermissionsBody) => (usingMock ? mockApi.updatePermissions(b) : http<Permissions>('PUT', '/permissions', b)),
   killSwitch: () => (usingMock ? mockApi.killSwitch() : http<Permissions>('POST', '/permissions/kill-switch')),
   audit: (limit = 50) => (usingMock ? mockApi.audit(limit) : http<Page<AuditEntry>>('GET', `/audit${qs({ limit })}`)),
+  // GET /audit/export returns the whole log; accept a bare array or { items }.
+  auditExport: async (): Promise<AuditEntry[]> => {
+    if (usingMock) return mockApi.auditExport();
+    const data = await http<AuditEntry[] | { items: AuditEntry[] }>('GET', '/audit/export');
+    return Array.isArray(data) ? data : data.items;
+  },
   telegramLinkCode: () =>
     usingMock ? mockApi.telegramLinkCode() : http<{ code: string; expiresAt: string }>('POST', '/telegram/link-code'),
 };

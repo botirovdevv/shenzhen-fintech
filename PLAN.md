@@ -595,7 +595,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 
 ### Stage 9: Deploy, hujjatlar, dalil (BE + FE + Prezentatorlar)
 - [ ] Render'ga backend va bot deploy qilinadi (`render.yaml`)
-- [ ] Expo web → Render static site; EAS APK — `pnpm build:web` (dist/) va `eas.json` (preview = APK) tayyor, deploy qilinmagan
+- [ ] Expo web → Render static site; EAS APK — `pnpm build:web` (dist/) va `eas.json` (preview = APK) tayyor, deploy qilinmagan. APK hajmi: `expo-build-properties` (faqat arm64-v8a + armeabi-v7a, R8 minify, shrink, siqilgan .so) — 111 MB edi
 - [ ] `/audit/export` → demo ssenariy o'tkaziladi → `docs/proof/audit-log.json`
 - [ ] `README.md`: o'rnatish, ishga tushirish, deploy, test, arxitektura (inglizcha)
 - [ ] `docs/technical.md`, `docs/security.md` (inglizcha)
@@ -721,3 +721,4 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | 2026-10-16 | Claude (FE) | FE yakunlandi: ovozli kiritish (expo-audio → `/transactions/voice`), bildirishnomalar + hisobot vaqti, budjet/ruxsatlarni tahrirlash, what-if → `/agent/simulate`, sozlamalar saqlanadi, ErrorBoundary, ikon/splash, `eas.json`, web export. ESLint+Prettier, 19 ta Vitest testi. typecheck/lint/test yashil | BE: `apps/api` (§11) tayyor bo'lgach `EXPO_PUBLIC_API_URL` bilan ulash va Stage 2 DoD'ni haqiqiy API'da tekshirish |
 | 2026-10-16 | Claude (FE) | UX pass: Android/iOS klaviatura inputlarni yopmaydi (Login/Register/Onboarding/Add/chat), Expo Go Android'da expo-notifications crash tuzatildi, "See all" tranzaksiyalar ekrani, xato holatlari uchun Try again, demo akkaunt tugmasi, Android back onboarding'da, what-if so'rovi faqat slayder qo'yib yuborilganda | Telefonda klaviatura va oqimlarni tekshirish; BE ulanishi |
 | 2026-10-16 | Claude (FE) | Nomi FeMate'ga o'zgardi: yangi logo (F + tanga) komponenti, ilova ochilishida animatsiyali intro, ikon/splash/favicon, brend yashil #0E7A4B, `@femate/shared`, demo email aziz@femate.uz. KeyboardScreen'dagi measureLayout ogohlantirishi tuzatildi | BE seed'dagi email va DB nomini moslashtirish |
+| 2026-10-16 | Claude (FE) | APK 111 MB va "package appears to be invalid": APK tekshirildi (zip/imzo to'g'ri, 4 ABI siqilmagan, x86/x86_64 ~47 MB). `expo-build-properties`: buildArchs arm64-v8a+armeabi-v7a, minify, shrinkResources, useLegacyPackaging. Audit eksport `GET /audit/export` ga ulandi (mock: to'liq log). typecheck/lint/test yashil | Yangi `preview` build, telefonda o'rnatib demo oqimini tekshirish |

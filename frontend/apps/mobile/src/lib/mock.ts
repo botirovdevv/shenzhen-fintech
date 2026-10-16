@@ -721,6 +721,10 @@ export const mockApi = {
     await delay(120);
     return { items: db.audit.slice(0, limit), nextCursor: null };
   },
+  async auditExport(): Promise<AuditEntry[]> {
+    await delay(120);
+    return [...db.audit];
+  },
   async telegramLinkCode(): Promise<{ code: string; expiresAt: string }> {
     await delay(300);
     const code = String(100000 + Math.floor(Math.random() * 900000));
