@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "FeMate",
+    "slug": "femate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "uz.femate.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0E7A4B",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "uz.femate.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "FeMate uses the microphone so you can say an expense instead of typing it."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0E7A4B"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "scheme": "femate",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "description": "AI money co-pilot that tracks spending and moves money only with your permission.",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3a2c0c73-ab80-43ab-9635-5dfcf4cf8a4d"
+      }
+    },
+    "owner": "mustafodev"
+  }
+}

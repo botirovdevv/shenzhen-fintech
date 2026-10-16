@@ -1,0 +1,6 @@
+node_modules
+pnpm-lock.yaml
+dist
+.expo
+PLAN.md
+expo-env.d.ts

@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - '@expo/cli@57.0.31'
+  - '@expo/router-server@57.0.13'
+  - babel-preset-expo@57.0.16
+  - expo@57.0.30
+  - '@expo/ui@57.0.25'
+  - expo-router@57.0.28
+
+# Expo + React Native libraries resolve most reliably with a flat node_modules.
+nodeLinker: hoisted
