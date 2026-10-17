@@ -569,15 +569,15 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 **DoD:** "Bugun qancha tejadim, jamg'armaga o'tkaz" → `pending` harakat yaratiladi; prompt-injection seed tranzaksiyasi bilan test: agent ortiqcha o'tkazma **qilmaydi** (Policy Guard bloklaydi yoki tool chaqirilmaydi); taxi tavsiyasi ~240 000 so'm/oy ko'rsatadi.
 
 ### Stage 6: Ovozli kiritish (BE + FE)
-- [ ] `stt/groq.ts`, `POST /transactions/voice` (≤ 2 MB, ≤ 60 soniya)
+- [x] `stt/groq.ts`, `POST /transactions/voice` (≤ 2 MB, ≤ 60 soniya)
 - [x] FE: `expo-audio` bilan yozish, natija kartasi
-- [ ] Kalit yo'q bo'lsa: aniq xato xabari, ilova buzilmaydi — FE tayyor (`STT_UNAVAILABLE`/503 → xabar), BE qismi qoldi
+- [x] Kalit yo'q bo'lsa: aniq xato xabari, ilova buzilmaydi (`STT_UNAVAILABLE`/503 → xabar)
 
 **DoD:** "Bozorga qirq besh ming ishlatdim" ovozi → `{amount: 45000, category: 'food'}`.
 
 ### Stage 7: Telegram bot, hisobot, push (BE)
 - [x] Bot: `/start <code>` orqali akkaunt ulash (`/telegram/link-code`) — [@femate_uz_bot](https://t.me/femate_uz_bot), `backend/src/bot/`
-- [ ] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat — matn tayyor va haqiqiy Telegram'da tekshirildi; ovoz Groq kaliti bilan keyin
+- [x] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat (botda haqiqiy ovoz bilan hali tekshirilmagan)
 - [x] Forward qilingan bank SMS → `smsParser` → xarajat (`source: 'sms_forward'`)
 - [x] `/today` buyrug'i → kunlik hisobot
 - [x] Scheduler: har daqiqa `report_time` ga mos foydalanuvchilarga kunlik hisobot (Telegram + push). Hisobotda `savedToday` bo'lsa, L2 da tasdiq tugmasi, L3 da avto o'tkazma
@@ -702,7 +702,7 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | Savol | Holat | Javob kelmaguncha nima qilinadi |
 |---|---|---|
 | Qaysi LLM ishlatiladi: Claude yoki Gemini? | ❓ | `mock` provider bilan ishlanadi |
-| Groq API kalit | ❓ | Ovoz funksiyasi o'chiq turadi |
+| Groq API kalit | ✅ (2026-10-17, faqat VM `.env` da) | — |
 | Telegram bot token | ❓ | Bot kodi yoziladi, lekin ishga tushirilmaydi |
 | Loyiha nomi | ✅ **FeMate** (2026-10-16) | — |
 | Finalga kim boradi? | ❓ | — |
@@ -726,3 +726,4 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | 2026-10-17 | Claude (BE) | Cloudflare tunnel `femate` → `femate-api.usm0n.uz` (alohida `cloudflared` konteyner, compose'da). Telegram bot @femate_uz_bot yaratildi (token faqat VM `.env` da). `backend/src/bot/`: /start kod bilan ulash (5 urinish/10 daqiqa), matn → xarajat, bank SMS parser (Uzcard/Humo, 6 namuna), /today, scheduler (report_time, Telegram + Expo push, L2 tasdiq tugmalari, L3 avto). Ilovada "Open in Telegram" tugmasi. 51 ta test yashil | Bot kodini VM'ga deploy qilish va DoD'ni haqiqiy Telegram'da tekshirish; ilovani `https://femate-api.usm0n.uz/api/v1` ga ulash |
 | 2026-10-17 | Claude (FE+BE) | Ilova haqiqiy API'ga ulandi (`apps/mobile/.env`, `eas.json` build env). CORS'ga PUT/PATCH/DELETE qo'shildi (web'da `PATCH /me`, `PUT /permissions` ishlamasdi). VM'ga qayta deploy, bot @femate_uz_bot polling. Stage 2 DoD: web ilovada Aziz bilan kirildi, bosh sahifa haqiqiy balans/limitni ko'rsatdi; curl: login → 3 hisob → "taxi 20 ming" → `transport` ro'yxatda | Bot DoD'ni haqiqiy Telegram'da tekshirish (link kod → "taxi 20000" → ilovada); Groq STT, push yuborish |
 | 2026-10-17 | Claude (BE) | Bot DoD Telegram Web'da tekshirildi: `/start <kod>` ulandi, "taxi 20000" → transport (API'da ko'rinadi), Humo SMS → Evos 45 000 food (`sms_forward`), `/today`, `report_time` hisoboti o'z vaqtida keldi, L2 Approve tugmasi → 21 548 Card → Savings, audit'da `tool.transfer_to_savings` + `action.approve`. Demo qayta seed qilindi, chat Aziz'ga ulangan. Eslatma: ilova mock rejimida bergan kodlar botda ishlamaydi | Groq STT, push yuborish, Claude provider |
+| 2026-10-17 | Claude (BE) | Ovoz: `stt/groq.ts` (whisper-large-v3, prompt raqamlarga yo'naltiradi, 2 MB / 60 s), `POST /transactions/voice` (`@fastify/multipart`, `source: 'voice'`), botda ovozli xabar → xarajat. Kategorizator: "20 тысяч" endi 20 000 (`\b` kirillni bilmaydi), ruscha kalit so'zlar, transkript oxiridagi nuqta olib tashlanadi. Groq haqiqiy klip bilan tekshirildi (en/ru). 53 ta test. VM'ga deploy, `femate-api.usm0n.uz` da ikki klip → 20 000 transport (`voice`) | Ilova va botda haqiqiy o'zbekcha ovoz bilan DoD |

@@ -51,7 +51,8 @@ export function parseUzbekNumber(text: string): number | null {
   return seen ? total + group : null;
 }
 
-const AMOUNT_RE = /(\d[\d\s]*(?:[.,]\d+)?)\s*(k|ming|thousand|th|тыс)?\b/;
+// Not \b: it only knows ASCII letters, so "20 тысяч" would lose its multiplier.
+const AMOUNT_RE = /(\d[\d\s]*(?:[.,]\d+)?)\s*(k|ming|thousand|th|тыс\p{L}*)?(?![\p{L}\d])/u;
 
 /** "20 ming" / "20k" / "20 000" / "qirq besh ming" -> integer UZS, or null. */
 export function parseAmount(text: string): number | null {
@@ -66,8 +67,8 @@ export function parseAmount(text: string): number | null {
 
 const RULES: [RegExp, Category][] = [
   [/uzum market|mediapark|texnomart/, 'shopping'], // before 'market' -> food
-  [/taxi|taksi|yandex|bus|avtobus|metro|benzin|fuel|uber/, 'transport'],
-  [/ovqat|osh|kafe|cafe|lunch|dinner|breakfast|bozor|bazaar|market|coffee|non\b|bread|food|restaurant|evos|korzinka|makro|havas|supermarket/, 'food'],
+  [/taxi|taksi|yandex|bus|avtobus|metro|benzin|fuel|uber|такси|автобус|метро|бензин/, 'transport'],
+  [/ovqat|osh|kafe|cafe|lunch|dinner|breakfast|bozor|bazaar|market|coffee|non\b|bread|food|restaurant|evos|korzinka|makro|havas|supermarket|обед|кофе|еда|продукты/, 'food'],
   [/svet|gaz|suv|electric|gas|water|internet|kommunal/, 'utilities'],
   [/shop|uzum|kiyim|clothes|shoes|store|magazin/, 'shopping'],
   [/dorixona|pharmacy|doctor|apteka|health/, 'health'],
@@ -83,7 +84,7 @@ export function categorize(text: string): { amount: number | null; category: Cat
   const words = text
     .replace(m?.[0] ?? '', ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/^[\s.,!?;:]+|[\s.,!?;:]+$/g, ''); // speech-to-text adds a final period
   const description = words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Expense';
   return { amount, category, description };
 }

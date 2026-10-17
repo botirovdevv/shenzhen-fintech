@@ -19,6 +19,7 @@ import { parseSms } from '../rules/smsParser';
 export const HELP = [
   'Send me what you spent and I’ll add it to FeMate:',
   '• taxi 20000  •  osh 35 ming  •  kofe 18k',
+  '• Send a voice note: “taksi yigirma ming”.',
   '• Forward a bank SMS (Uzcard / Humo) and I’ll read it.',
   '',
   '/today: today’s report',
@@ -75,6 +76,16 @@ export async function handleText(db: Db, llm: LlmProvider, userId: string, text:
   if (!c.amount || c.amount <= 0) return 'I couldn’t find an amount. Try “taxi 20000” or “osh 35 ming”.';
   await addExpense(db, userId, { amount: c.amount, category: c.category, description: c.description, source: 'manual' });
   return `✅ Added: ${c.description}, ${fmt(c.amount)} UZS (${c.category}).\n${await leftToday(db, userId)}`;
+}
+
+/** A voice note, already turned into text. Same rules as a typed expense, saved with source voice. */
+export async function handleVoice(db: Db, llm: LlmProvider, userId: string, transcript: string): Promise<string> {
+  if (!transcript) return 'I didn’t hear anything. Try again, like “taxi 20 ming”.';
+  const heard = `🎤 “${transcript.slice(0, 200)}”`;
+  const c = await llm.categorize(transcript);
+  if (!c.amount || c.amount <= 0) return `${heard}\nI couldn’t find an amount. Try “taxi 20 ming” or type it.`;
+  await addExpense(db, userId, { amount: c.amount, category: c.category, description: c.description, source: 'voice' });
+  return `${heard}\n✅ Added: ${c.description}, ${fmt(c.amount)} UZS (${c.category}).\n${await leftToday(db, userId)}`;
 }
 
 async function leftToday(db: Db, userId: string) {

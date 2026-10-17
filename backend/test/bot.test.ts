@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createProvider } from '../src/agent/llm';
-import { dailyReport, decideAction, handleText, linkChat, userByChat } from '../src/bot/core';
+import { dailyReport, decideAction, handleText, handleVoice, linkChat, userByChat } from '../src/bot/core';
 import { runDueReports, tashkentClock } from '../src/bot/scheduler';
 import { DEMO } from '../src/db/demo';
 import { auditLog, permissions, users } from '../src/db/schema';
@@ -72,6 +72,15 @@ describe('Telegram bot (Stage 7)', () => {
     const { body } = await t.call<{ items: Transaction[] }>('GET', '/transactions?limit=1');
     expect(body.items[0]).toMatchObject({ amount: 20_000, category: 'transport', source: 'manual' });
     expect(await handleText(t.db, llm, DEMO.id, 'just saying hi')).toMatch(/couldn’t find an amount/);
+  });
+
+  it('a voice note adds an expense with source voice and echoes what it heard', async () => {
+    await link();
+    expect(await handleVoice(t.db, llm, DEMO.id, 'Такси 20 тысяч.')).toMatch(/🎤 “Такси 20 тысяч\.”\n✅ Added: Такси, 20 000 UZS \(transport\)/);
+    const { body } = await t.call<{ items: Transaction[] }>('GET', '/transactions?limit=1');
+    expect(body.items[0]).toMatchObject({ amount: 20_000, category: 'transport', source: 'voice' });
+    expect(await handleVoice(t.db, llm, DEMO.id, 'salom')).toMatch(/couldn’t find an amount/);
+    expect(await handleVoice(t.db, llm, DEMO.id, '')).toMatch(/didn’t hear anything/);
   });
 
   it('a forwarded bank SMS becomes a card expense with source sms_forward', async () => {

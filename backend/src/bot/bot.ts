@@ -5,7 +5,9 @@ import { Bot, GrammyError, InlineKeyboard, type Context } from 'grammy';
 
 import type { LlmProvider } from '../agent/llm/provider';
 import type { Db } from '../db/client';
-import { HELP, dailyReport, decideAction, describeAction, handleText, linkChat, unlinkChat, userByChat, type Report } from './core';
+import { ApiError } from '../lib/errors';
+import { MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, type SttProvider } from '../stt/groq';
+import { HELP, dailyReport, decideAction, describeAction, handleText, handleVoice, linkChat, unlinkChat, userByChat, type Report } from './core';
 
 type Ctx = Context & { userId?: string };
 
@@ -19,8 +21,8 @@ const LINK_WINDOW_MS = 10 * 60_000;
 export const actionKeyboard = (a: AgentAction) =>
   new InlineKeyboard().text('✅ Approve', `act:approve:${a.id}`).text('❌ Reject', `act:reject:${a.id}`);
 
-export function createBot(token: string, deps: { db: Db; llm: LlmProvider; log: FastifyBaseLogger }) {
-  const { db, llm, log } = deps;
+export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: SttProvider | null; log: FastifyBaseLogger }) {
+  const { db, llm, stt, log } = deps;
   const bot = new Bot<Ctx>(token);
   const tries = new Map<string, { n: number; until: number }>();
 
@@ -65,7 +67,25 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; log: 
 
   bot.command('unlink', async (ctx) => ctx.reply(await unlinkChat(db, ctx.userId!)));
 
-  bot.on('message:voice', (ctx) => ctx.reply('Voice messages aren’t on yet. Type it instead, like “taxi 20000”.'));
+  bot.on('message:voice', async (ctx) => {
+    if (!stt) return ctx.reply('Voice messages aren’t on yet. Type it instead, like “taxi 20000”.');
+    const v = ctx.message.voice;
+    if (v.duration > MAX_AUDIO_SECONDS || (v.file_size ?? 0) > MAX_AUDIO_BYTES) {
+      return ctx.reply(`Keep voice notes under ${MAX_AUDIO_SECONDS} seconds, like “taksi yigirma ming”.`);
+    }
+    await ctx.replyWithChatAction('typing');
+    const file = await ctx.getFile();
+    const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+    if (!res.ok) throw new Error(`Telegram file download failed: ${res.status}`);
+    const data = new Uint8Array(await res.arrayBuffer());
+    try {
+      const transcript = await stt.transcribe({ data, filename: 'voice.ogg', mimeType: v.mime_type ?? 'audio/ogg' });
+      return ctx.reply(await handleVoice(db, llm, ctx.userId!, transcript));
+    } catch (e) {
+      if (e instanceof ApiError) return ctx.reply(e.message);
+      throw e;
+    }
+  });
 
   bot.on('message:text', async (ctx) => {
     if (ctx.message.text.startsWith('/')) return ctx.reply(HELP);

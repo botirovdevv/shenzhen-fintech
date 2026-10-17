@@ -8,6 +8,7 @@ import { runTool } from '../src/agent/tools';
 import { DEMO } from '../src/db/demo';
 import { accounts, agentActions, permissions } from '../src/db/schema';
 import { checkPolicy } from '../src/policy/policyGuard';
+import { MAX_AUDIO_BYTES, type SttProvider } from '../src/stt/groq';
 import { setup } from './helpers';
 
 let t: Awaited<ReturnType<typeof setup>>;
@@ -65,6 +66,35 @@ describe('auth and basics', () => {
   it('daily summary for the seeded day: 93 548 allowance in a 31-day month', async () => {
     const { body } = await t.call<DailySummary>('GET', '/summary/daily?date=2026-10-17');
     expect(body.dailyAllowance).toBe(93_548);
+  });
+});
+
+describe('voice input (PLAN.md Stage 6)', () => {
+  const heard: string[] = [];
+  const stt: SttProvider = { transcribe: async () => heard.shift() ?? '' };
+  const upload = (app: typeof t.app, token: string, bytes = 1000) => {
+    const form = new FormData();
+    form.append('audio', new Blob([new Uint8Array(bytes)], { type: 'audio/m4a' }), 'voice.m4a');
+    return app.inject({ method: 'POST', url: '/api/v1/transactions/voice', payload: form, headers: { authorization: `Bearer ${token}` } });
+  };
+  const token = async () =>
+    (await t.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: DEMO.email, password: DEMO.password } })).json<{ token: string }>().token;
+
+  it('transcript becomes a voice expense; no amount, silence and big files are refused', async () => {
+    await t.close();
+    t = await setup({ stt });
+    const tok = await token();
+    heard.push('Taksi 20 ming.');
+    const ok = await upload(t.app, tok);
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json()).toMatchObject({ transcript: 'Taksi 20 ming.', transaction: { amount: 20_000, category: 'transport', description: 'Taksi', source: 'voice' } });
+    heard.push('hello there');
+    expect((await upload(t.app, tok)).json()).toMatchObject({ error: { code: 'INVALID_ARGS', message: expect.stringContaining('hello there') } });
+    expect((await upload(t.app, tok)).json()).toMatchObject({ error: { code: 'EMPTY_AUDIO' } });
+    const big = await upload(t.app, tok, MAX_AUDIO_BYTES + 1);
+    expect(big.statusCode).toBe(413);
+    expect(big.json()).toMatchObject({ error: { code: 'AUDIO_TOO_LARGE' } });
+    expect((await t.call('POST', '/transactions/voice', { text: 'taxi 20000' })).body).toMatchObject({ error: { code: 'INVALID_ARGS' } });
   });
 });
 

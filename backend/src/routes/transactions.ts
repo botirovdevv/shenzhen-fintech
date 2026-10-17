@@ -1,3 +1,4 @@
+import multipart from '@fastify/multipart';
 import { CATEGORIES, type Category, type Page, type Transaction } from '@femate/shared';
 import { and, desc, eq, gte, lt, lte, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -9,6 +10,7 @@ import { ApiError } from '../lib/errors';
 import { decodeCursor, encodeCursor } from '../lib/paginate';
 import { toTransaction } from '../lib/serialize';
 import { parse } from '../lib/validate';
+import { MAX_AUDIO_BYTES } from '../stt/groq';
 
 const category = z.enum(CATEGORIES as [Category, ...Category[]]);
 const listQuery = z.object({
@@ -64,11 +66,30 @@ export async function transactionRoutes(app: FastifyInstance) {
     return toTransaction(t);
   });
 
-  // Voice input (Stage 6, pass 2). Until Groq is configured, answer with the code the app understands.
+  // Voice input (Stage 6): multipart field "audio" → Groq Whisper → the same categorizer as typed text.
   await app.register(async (voice) => {
-    voice.addContentTypeParser('multipart/form-data', (_req, _payload, done) => done(null));
-    voice.post('/transactions/voice', async () => {
-      throw new ApiError(503, 'STT_UNAVAILABLE', 'Voice input is off on the server right now. Type the expense instead.');
+    await voice.register(multipart, { limits: { files: 1, fields: 0, fileSize: MAX_AUDIO_BYTES } });
+    voice.post('/transactions/voice', async (req, reply): Promise<{ transcript: string; transaction: Transaction }> => {
+      if (!app.stt) throw new ApiError(503, 'STT_UNAVAILABLE', 'Voice input is off on the server right now. Type the expense instead.');
+      if (!req.isMultipart()) throw new ApiError(400, 'INVALID_ARGS', 'Send the recording as multipart field “audio”.');
+      const file = await req.file();
+      if (!file || file.fieldname !== 'audio') throw new ApiError(400, 'INVALID_ARGS', 'Send the recording as multipart field “audio”.');
+      const data = await file.toBuffer().catch((e: unknown) => {
+        if ((e as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
+          throw new ApiError(413, 'AUDIO_TOO_LARGE', 'That recording is too big. Keep it under a minute.');
+        }
+        throw e;
+      });
+      if (!data.length) throw new ApiError(400, 'EMPTY_AUDIO', 'The recording was empty. Try again.');
+      const transcript = await app.stt.transcribe({ data, filename: file.filename || 'voice.m4a', mimeType: file.mimetype });
+      if (!transcript) throw new ApiError(400, 'EMPTY_AUDIO', 'I didn’t hear anything. Try again, like “taxi 20 ming”.');
+      const c = await llm.categorize(transcript);
+      if (!c.amount || c.amount <= 0) {
+        throw new ApiError(400, 'INVALID_ARGS', `I heard “${transcript.slice(0, 120)}” but no amount. Try again, like “taxi 20 ming”.`);
+      }
+      const t = await addExpense(db, req.userId, { amount: c.amount, category: c.category, description: c.description, source: 'voice' });
+      reply.status(201);
+      return { transcript, transaction: toTransaction(t) };
     });
   });
 }

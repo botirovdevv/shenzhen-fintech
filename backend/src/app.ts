@@ -20,11 +20,14 @@ import { permissionRoutes } from './routes/permissions';
 import { summaryRoutes } from './routes/summary';
 import { telegramRoutes } from './routes/telegram';
 import { transactionRoutes } from './routes/transactions';
+import { createGroqStt, type SttProvider } from './stt/groq';
 
 declare module 'fastify' {
   interface FastifyInstance {
     db: Db;
     llm: LlmProvider;
+    /** Null when GROQ_API_KEY is empty: voice input answers 503 STT_UNAVAILABLE. */
+    stt: SttProvider | null;
     config: Config;
   }
   interface FastifyRequest {
@@ -43,13 +46,15 @@ export interface AppOptions {
   db: Db;
   config: Config;
   llm?: LlmProvider;
+  stt?: SttProvider | null;
   logger?: boolean;
 }
 
-export async function buildApp({ db, config, llm, logger = false }: AppOptions) {
+export async function buildApp({ db, config, llm, stt, logger = false }: AppOptions) {
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 1024 * 1024 });
   app.decorate('db', db);
   app.decorate('llm', llm ?? createProvider(config));
+  app.decorate('stt', stt === undefined ? createGroqStt(config.GROQ_API_KEY) : stt);
   app.decorate('config', config);
   app.decorateRequest('userId', '');
   // POST endpoints without a body (approve, kill switch) must not fail when a client still sends a JSON content type.

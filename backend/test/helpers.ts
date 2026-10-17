@@ -7,6 +7,7 @@ import type { Config } from '../src/config';
 import { MIGRATIONS_DIR, type Db } from '../src/db/client';
 import { DEMO, resetDemo } from '../src/db/demo';
 import * as schema from '../src/db/schema';
+import type { SttProvider } from '../src/stt/groq';
 
 export const config: Config = {
   PORT: 0,
@@ -20,13 +21,13 @@ export const config: Config = {
 };
 
 /** Fresh in-process Postgres with migrations and the demo user, plus an app and Aziz's token. */
-export async function setup() {
+export async function setup(opts: { stt?: SttProvider | null } = {}) {
   const client = new PGlite();
   const pg = drizzle(client, { schema });
   await migrate(pg, { migrationsFolder: MIGRATIONS_DIR });
   const db = pg as unknown as Db;
   await resetDemo(db);
-  const app = await buildApp({ db, config });
+  const app = await buildApp({ db, config, stt: opts.stt });
   const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: DEMO.email, password: DEMO.password } });
   const token = login.json<{ token: string }>().token;
   const call = async <T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'PATCH', url: string, payload?: unknown) => {

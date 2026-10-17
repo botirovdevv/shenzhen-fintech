@@ -60,6 +60,13 @@ Cloudflare dashboard under Networking → Tunnels → femate → Routes).
 - Logs: `ssh … 'cd ~/femate/backend && docker compose logs -f api'`
 - Try the app against it: set `EXPO_PUBLIC_API_URL=https://femate-api.usm0n.uz/api/v1` in `frontend/apps/mobile/.env`.
 
+## Voice input
+
+`POST /transactions/voice` takes multipart field `audio` (≤ 2 MB, ≤ 60 s), sends it to Groq
+`whisper-large-v3` (`src/stt/groq.ts`), then categorizes the transcript like typed text. It answers
+`201 {transcript, transaction}`. With `GROQ_API_KEY` empty it answers 503 `STT_UNAVAILABLE` and the
+bot says voice is off.
+
 ## Telegram bot
 
 [@femate_uz_bot](https://t.me/femate_uz_bot) runs inside the API process (long polling) when
@@ -69,6 +76,7 @@ Cloudflare dashboard under Networking → Tunnels → femate → Routes).
   button). Codes live 10 minutes; 5 tries per chat per 10 minutes.
 - Text like `taxi 20000` / `osh 35 ming` adds an expense. A forwarded Uzcard / Humo SMS is parsed
   (`rules/smsParser.ts`) and added from the card with `source: 'sms_forward'`.
+- A voice note (≤ 60 s) goes through Groq Whisper and is added like typed text, with `source: 'voice'`.
 - `/today` sends the report. At each user's `report_time` the scheduler sends it to Telegram (and
   as an Expo push if the app registered a token). At L2 it proposes moving today's unspent allowance
   to savings with ✅ Approve / ❌ Reject buttons; at L3 it is done within limits; below L2 nothing.
@@ -77,6 +85,5 @@ Cloudflare dashboard under Networking → Tunnels → femate → Routes).
 
 ## Not yet (pass 2)
 
-- Groq speech-to-text: `/transactions/voice` answers 503 `STT_UNAVAILABLE` until then
 - Anomaly alerts
 - Claude provider: `LLM_PROVIDER=mock` is the only one so far
