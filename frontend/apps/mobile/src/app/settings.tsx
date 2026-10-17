@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, Switch, View } from 'react-native';
+import { Linking, Modal, Pressable, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/Icon';
@@ -14,6 +14,8 @@ import { queryClient, useDailySummary, useMe, usePermissions, useUpdateMe } from
 import { useSession } from '@/store/session';
 import { useSettings, type Appearance } from '@/store/settings';
 import { useTheme } from '@/theme';
+
+const BOT_URL = 'https://t.me/femate_uz_bot';
 
 const REPORT_TIMES = ['18:00', '19:00', '20:00', '20:30', '21:00', '21:30', '22:00', '23:00'];
 
@@ -274,14 +276,29 @@ export default function Settings() {
               Add expenses, forward bank SMS and get your daily report in Telegram. The bot can read and add, but it can never move money.
             </Text>
           </View>
-          {code ? (
+          {me.data?.telegramLinked && !code ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon name="check" size={16} color={c.accent} strokeWidth={2.4} />
+              <Text variant="callout" style={{ flex: 1 }}>
+                Linked to @femate_uz_bot
+              </Text>
+              <Button title="Open" variant="tinted" size="small" onPress={() => Linking.openURL(BOT_URL)} />
+            </View>
+          ) : code ? (
             <View style={{ alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: c.fill }}>
               <Text selectable variant="largeTitle" tabular style={{ letterSpacing: 4, fontSize: 34 }}>
                 {code.code}
               </Text>
               <Text variant="footnote" color="body" style={{ textAlign: 'center', fontSize: 14 }} selectable>
-                Send /start {code.code} to the FeMate bot.
+                Send /start {code.code} to @femate_uz_bot, or tap below.
               </Text>
+              <Button
+                title="Open in Telegram"
+                icon="send"
+                size="medium"
+                onPress={() => Linking.openURL(`${BOT_URL}?start=${code.code}`)}
+                style={{ borderRadius: 14, height: 44, alignSelf: 'stretch' }}
+              />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Icon name="clock" size={12} color={c.secondary} strokeWidth={2.2} />
                 <Text variant="caption" color="secondary">

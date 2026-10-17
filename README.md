@@ -7,7 +7,7 @@ spending, gives concrete savings advice and moves money **only with the user's p
 | Folder | What |
 |---|---|
 | [`frontend/`](frontend/) | Mobile app (Expo SDK 57, React Native, TypeScript) and shared API types — see [frontend/README.md](frontend/README.md) |
-| `backend/` | API + Telegram bot (in progress) |
+| [`backend/`](backend/) | API (Fastify 5, Postgres, Policy Guard, agent) — see [backend/README.md](backend/README.md). Telegram bot next |
 | [`PLAN.md`](PLAN.md) | Full spec, stages and team plan |
 
 Try it: web build at https://femate.expo.app (demo account inside the app).

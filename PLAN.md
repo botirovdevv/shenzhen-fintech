@@ -136,7 +136,7 @@ Oy oxirida pul qolmaydi, lekin Aziz nima uchun shunday bo'layotganini bilmaydi.
 | Paket menejer | **pnpm** workspaces (monorepo) |
 | Til | **TypeScript**, `strict: true` |
 | Backend | **Fastify 5** + **zod** (validatsiya) |
-| DB | **SQLite** + **Drizzle ORM** + `better-sqlite3`. Fayl: `apps/api/data/femate.db` |
+| DB | **PostgreSQL 16** + **Drizzle ORM** (`postgres` drayveri). VM'da alohida `femate-db` konteyneri (2026-10-17 o'zgardi, avval SQLite edi). Testlar: PGlite (jarayon ichidagi Postgres) |
 | Auth | Email + parol (`bcryptjs`), **JWT** (`@fastify/jwt`), 7 kunlik token |
 | Mobil | **Expo SDK 57** + **expo-router** + TypeScript |
 | Mobil holat | **TanStack Query** (server holati) + **zustand** (lokal holat) |
@@ -150,7 +150,7 @@ Oy oxirida pul qolmaydi, lekin Aziz nima uchun shunday bo'layotganini bilmaydi.
 | Ovoz → matn | **Groq Whisper** (`whisper-large-v3`). Kalit yo'q bo'lsa, ovoz o'chiriladi va foydalanuvchiga xabar ko'rsatiladi |
 | Testlar | **Vitest** |
 | Lint/format | ESLint + Prettier (standart sozlama) |
-| Deploy | Backend + bot: **Render** (bitta web service). Mobil: **EAS** build (APK) + **Expo web** (Render static site) |
+| Deploy | Backend + bot: **o'z VM** (Docker Compose, `~/femate`, `backend/scripts/deploy.sh`), keyinroq Cloudflare tunnel orqali `femate-api.usm0n.uz` (2026-10-17 o'zgardi, avval Render edi). Mobil: **EAS** build (APK) + **Expo web** |
 | Pul | **Butun son, so'mda** (`integer`). Kasr yo'q |
 | Vaqt | DB'da ISO 8601 UTC. Kun chegarasi `Asia/Tashkent` bo'yicha hisoblanadi |
 | ID | `nanoid` (string) |
@@ -173,7 +173,7 @@ flowchart LR
         SC["⏰ Scheduler"] --> RE
     end
 
-    API --> DB[("🗄️ SQLite")]
+    API --> DB[("🗄️ PostgreSQL")]
     AG -.-> LLM["🧠 LLM API"]
     API -.-> STT["🎤 Groq Whisper"]
 ```
@@ -517,18 +517,18 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 - [ ] Root `package.json` skriptlari ([17-bo'lim](#17-ishga-tushirish-va-env))
 - [ ] `tsconfig.base.json` (strict), ESLint, Prettier, `.gitignore` (`.env`, `data/*.db`, `node_modules`) — FE: tsconfig, .gitignore, ESLint (eslint-config-expo) va Prettier tayyor; BE o'z paketlarini qo'shadi
 - [x] `.env.example`, qisqa `README.md`
-- [ ] Fastify + `/api/v1/health`
+- [x] Fastify + `/api/v1/health` (`backend/`)
 - [x] Expo ilova (expo-router, tab navigatsiya, bo'sh ekranlar, tema)
 
 **DoD:** `pnpm i` xatosiz o'tadi; `pnpm dev:api` → `GET /api/v1/health` `{ok:true}` qaytaradi; `pnpm dev:mobile` → ilova web'da tablar bilan ochiladi; `pnpm typecheck` xatosiz.
 
 ### Stage 1: Backend asos (BE)
-- [ ] Drizzle sxema ([7-bo'lim](#7-malumotlar-bazasi)) va migratsiya
-- [ ] Seed skript (Aziz)
-- [ ] Auth: register, login, JWT middleware
-- [ ] `/me`, `/bank/connect`, `/accounts`, `/transactions` (GET, POST strukturali)
-- [ ] Mock Bank: hisoblar, tranzaksiya yaratish, `transfer(from, to, amount)` atomik (DB transaction)
-- [ ] Xato formati va zod validatsiya
+- [x] Drizzle sxema ([7-bo'lim](#7-malumotlar-bazasi)) va migratsiya
+- [x] Seed skript (Aziz) — `pnpm db:seed`, `SEED_DEMO=true` bo'lsa start'da avtomatik
+- [x] Auth: register, login, JWT middleware
+- [x] `/me`, `/bank/connect`, `/accounts`, `/transactions` (GET, POST strukturali)
+- [x] Mock Bank: hisoblar, tranzaksiya yaratish, `transfer(from, to, amount)` atomik (DB transaction)
+- [x] Xato formati va zod validatsiya
 
 **DoD:** `pnpm db:seed` ishlaydi; login → token → `GET /accounts` 3 ta hisob qaytaradi; Mock Bank transfer testlari o'tadi.
 
@@ -542,28 +542,28 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 **DoD:** Aziz bilan kirib, bosh sahifada haqiqiy balans va tranzaksiyalar ko'rinadi; yangi xarajat qo'shilsa ro'yxatda paydo bo'ladi.
 
 ### Stage 3: AI toifalash va Rules Engine (BE + FE)
-- [ ] LLM adapter: `mock` (to'liq), `claude`, `gemini`
-- [ ] `POST /transactions {text}` → `categorize` → saqlash
-- [ ] Rules Engine: `dailyAllowance`, `whatIf`, testlar bilan
-- [ ] `GET /summary/daily`
+- [ ] LLM adapter: `mock` (to'liq), `claude`, `gemini` — `mock` tayyor (intent mashinasi, tool chaqiradi); `claude` keyin
+- [x] `POST /transactions {text}` → `categorize` → saqlash
+- [x] Rules Engine: `dailyAllowance`, `whatIf`, testlar bilan
+- [x] `GET /summary/daily`
 - [x] FE: matn bilan kiritish, bosh sahifada kunlik limit halqasi
 
 **DoD:** `"taxi 20 ming"` → `{amount: 20000, category: 'transport'}` (mock rejimda ham); Rules Engine testlari o'tadi; bosh sahifada `remainingToday` ko'rinadi.
 
 ### Stage 4: Policy Guard, harakatlar, audit (BE + FE)
-- [ ] `policyGuard.check()`: [8-bo'limdagi](#8-xavfsizlik-va-policy-qoidalari) 9 ta qoida, tartib bilan
-- [ ] `agent_actions`: pending, approve, reject, 15 daqiqada expire
-- [ ] `audit.log()` va `/audit`
-- [ ] `/permissions` (GET/PUT, tizim maksimumi bilan), kill-switch
+- [x] `policyGuard.check()`: [8-bo'limdagi](#8-xavfsizlik-va-policy-qoidalari) 9 ta qoida, tartib bilan
+- [x] `agent_actions`: pending, approve, reject, 15 daqiqada expire
+- [x] `audit.log()` va `/audit`
+- [x] `/permissions` (GET/PUT, tizim maksimumi bilan), kill-switch
 - [x] FE: Agent faoliyati ekrani, tasdiqlash modali, pending banner
 
 **DoD:** Policy Guard'ning **har bir** rad etish kodi uchun alohida test bor va o'tadi; L2 da o'tkazma `pending` bo'ladi, tasdiqlangach balanslar o'zgaradi; kill-switch'dan keyin har qanday harakat `KILL_SWITCH_ACTIVE` bilan bloklanadi va bu audit'da ko'rinadi.
 
 ### Stage 5: AI Agent va tavsiyalar (BE + FE)
-- [ ] Tool'lar ([8-bo'lim](#8-xavfsizlik-va-policy-qoidalari)) va agent loop (≤ 5 tool chaqiruvi)
-- [ ] System prompt, `<untrusted_data>` o'rash
-- [ ] `/agent/chat`, `/agent/recommendations`, `/apply`
-- [ ] Tavsiya generatori: oxirgi 14 kunni tahlil qiladi, raqamlarni Rules Engine hisoblaydi
+- [x] Tool'lar ([8-bo'lim](#8-xavfsizlik-va-policy-qoidalari)) va agent loop (≤ 5 tool chaqiruvi)
+- [x] System prompt, `<untrusted_data>` o'rash
+- [x] `/agent/chat`, `/agent/recommendations`, `/apply`
+- [x] Tavsiya generatori: oxirgi 14 kunni tahlil qiladi, raqamlarni Rules Engine hisoblaydi
 - [x] FE: AI yordamchi ekrani (chat + tavsiya kartalari)
 
 **DoD:** "Bugun qancha tejadim, jamg'armaga o'tkaz" → `pending` harakat yaratiladi; prompt-injection seed tranzaksiyasi bilan test: agent ortiqcha o'tkazma **qilmaydi** (Policy Guard bloklaydi yoki tool chaqirilmaydi); taxi tavsiyasi ~240 000 so'm/oy ko'rsatadi.
@@ -576,25 +576,25 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 **DoD:** "Bozorga qirq besh ming ishlatdim" ovozi → `{amount: 45000, category: 'food'}`.
 
 ### Stage 7: Telegram bot, hisobot, push (BE)
-- [ ] Bot: `/start <code>` orqali akkaunt ulash (`/telegram/link-code`)
-- [ ] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat
-- [ ] Forward qilingan bank SMS → `smsParser` → xarajat (`source: 'sms_forward'`)
-- [ ] `/today` buyrug'i → kunlik hisobot
-- [ ] Scheduler: har daqiqa `report_time` ga mos foydalanuvchilarga kunlik hisobot (Telegram + push). Hisobotda `savedToday` bo'lsa, L2 da tasdiq tugmasi, L3 da avto o'tkazma
-- [ ] Bot pul o'tkazishni **faqat** inline tugma orqali tasdiqlay oladi (matn buyrug'i bilan emas)
+- [x] Bot: `/start <code>` orqali akkaunt ulash (`/telegram/link-code`) — [@femate_uz_bot](https://t.me/femate_uz_bot), `backend/src/bot/`
+- [ ] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat — matn tayyor; ovoz Groq kaliti bilan keyin
+- [x] Forward qilingan bank SMS → `smsParser` → xarajat (`source: 'sms_forward'`)
+- [x] `/today` buyrug'i → kunlik hisobot
+- [x] Scheduler: har daqiqa `report_time` ga mos foydalanuvchilarga kunlik hisobot (Telegram + push). Hisobotda `savedToday` bo'lsa, L2 da tasdiq tugmasi, L3 da avto o'tkazma
+- [x] Bot pul o'tkazishni **faqat** inline tugma orqali tasdiqlay oladi (matn buyrug'i bilan emas)
 - [ ] Expo push token saqlash va yuborish — FE: ruxsat, kunlik lokal eslatma, token `PATCH /me` ga (dev build + EAS projectId kerak); BE: yuborish
 
 **DoD:** Botga "taxi 20000" yozilsa, ilovada paydo bo'ladi; SMS namunalari parser testlaridan o'tadi; `report_time` ni 1 daqiqa keyinga qo'yganda hisobot Telegram'ga keladi.
 
 ### Stage 8: Qo'shimchalar (BE + FE)
-- [ ] What-if simulyator (`/agent/simulate` va UI slayderlar) — FE tayyor
+- [x] What-if simulyator (`/agent/simulate` va UI slayderlar)
 - [ ] Anomaliya aniqlash va ogohlantirish
-- [ ] `/summary/period` va hisobot grafiklari — FE grafiklar tayyor
+- [x] `/summary/period` va hisobot grafiklari
 
 **DoD:** Simulyator raqamlari Rules Engine testlariga mos keladi; seed'ga 500 000 so'mlik shopping qo'shilsa, anomaliya xabari keladi.
 
 ### Stage 9: Deploy, hujjatlar, dalil (BE + FE + Prezentatorlar)
-- [ ] Render'ga backend va bot deploy qilinadi (`render.yaml`)
+- [ ] VM'ga backend deploy — API ochiq: https://femate-api.usm0n.uz/api/v1 (Cloudflare tunnel `femate`, `femate-tunnel` konteyneri). Bot kodi tayyor, VM'ga deploy qilinishi kerak (`backend/scripts/deploy.sh`)
 - [ ] Expo web → Render static site; EAS APK — `pnpm build:web` (dist/) va `eas.json` (preview = APK) tayyor, deploy qilinmagan. APK hajmi: `expo-build-properties` (faqat arm64-v8a + armeabi-v7a, R8 minify, shrink, siqilgan .so) — 111 MB edi
 - [ ] `/audit/export` → demo ssenariy o'tkaziladi → `docs/proof/audit-log.json`
 - [ ] `README.md`: o'rnatish, ishga tushirish, deploy, test, arxitektura (inglizcha)
@@ -666,7 +666,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 | `pnpm i` | Paketlarni o'rnatish |
 | `pnpm db:migrate` | DB migratsiyalari |
 | `pnpm db:seed` | Demo ma'lumot (Aziz) |
-| `pnpm dev:api` | Backend (port 3000) |
+| `pnpm dev:api` | Backend (port 3000). Amalda: `cd backend && pnpm dev`; deploy: `backend/scripts/deploy.sh` |
 | `pnpm dev:bot` | Telegram bot |
 | `pnpm dev:mobile` | Expo dev server |
 | `pnpm test` | Barcha testlar |
@@ -679,7 +679,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 # Backend
 PORT=3000
 JWT_SECRET=change-me
-DATABASE_PATH=./data/femate.db
+DATABASE_URL=postgres://femate:femate@localhost:5433/femate
 TZ=Asia/Tashkent
 
 # AI
@@ -722,3 +722,5 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | 2026-10-16 | Claude (FE) | UX pass: Android/iOS klaviatura inputlarni yopmaydi (Login/Register/Onboarding/Add/chat), Expo Go Android'da expo-notifications crash tuzatildi, "See all" tranzaksiyalar ekrani, xato holatlari uchun Try again, demo akkaunt tugmasi, Android back onboarding'da, what-if so'rovi faqat slayder qo'yib yuborilganda | Telefonda klaviatura va oqimlarni tekshirish; BE ulanishi |
 | 2026-10-16 | Claude (FE) | Nomi FeMate'ga o'zgardi: yangi logo (F + tanga) komponenti, ilova ochilishida animatsiyali intro, ikon/splash/favicon, brend yashil #0E7A4B, `@femate/shared`, demo email aziz@femate.uz. KeyboardScreen'dagi measureLayout ogohlantirishi tuzatildi | BE seed'dagi email va DB nomini moslashtirish |
 | 2026-10-16 | Claude (FE) | APK 111 MB va "package appears to be invalid": APK tekshirildi (zip/imzo to'g'ri, 4 ABI siqilmagan, x86/x86_64 ~47 MB). `expo-build-properties`: buildArchs arm64-v8a+armeabi-v7a, minify, shrinkResources, useLegacyPackaging. Audit eksport `GET /audit/export` ga ulandi (mock: to'liq log). typecheck/lint/test yashil | Yangi `preview` build, telefonda o'rnatib demo oqimini tekshirish |
+| 2026-10-17 | Claude (BE) | `backend/` (Fastify 5 + Drizzle + Postgres): §11 API'ning hammasi (voice → 503 `STT_UNAVAILABLE`), Policy Guard 9 qoida tartib bilan, L2 pending/approve (1–8 qayta tekshiriladi)/15 daqiqa expire, L3 avto, kill-switch, audit + eksport (karta maskalanadi), mock LLM bilan agent loop (≤ 5 tool, `<untrusted_data>`), tavsiyalar. 38 ta Vitest testi (PGlite). VM'ga deploy: `femate-db` + `femate-api` (`127.0.0.1:3100`), demo ssenariy curl bilan tekshirildi | Ilovani haqiqiy API'ga ulash (SSH tunnel, keyin `femate-api.usm0n.uz`); pass 2: bot, Groq STT, scheduler/push, anomaliya, Claude provider |
+| 2026-10-17 | Claude (BE) | Cloudflare tunnel `femate` → `femate-api.usm0n.uz` (alohida `cloudflared` konteyner, compose'da). Telegram bot @femate_uz_bot yaratildi (token faqat VM `.env` da). `backend/src/bot/`: /start kod bilan ulash (5 urinish/10 daqiqa), matn → xarajat, bank SMS parser (Uzcard/Humo, 6 namuna), /today, scheduler (report_time, Telegram + Expo push, L2 tasdiq tugmalari, L3 avto). Ilovada "Open in Telegram" tugmasi. 51 ta test yashil | Bot kodini VM'ga deploy qilish va DoD'ni haqiqiy Telegram'da tekshirish; ilovani `https://femate-api.usm0n.uz/api/v1` ga ulash |
