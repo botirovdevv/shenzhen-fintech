@@ -8,7 +8,11 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "uz.femate.app"
+      "bundleIdentifier": "uz.femate.app",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -80,9 +84,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3a2c0c73-ab80-43ab-9635-5dfcf4cf8a4d"
+        "projectId": "d2eb66c4-95e6-4ce5-8f22-c4171bcd9c73"
       }
     },
-    "owner": "mustafodev"
+    "owner": "usm0n"
   }
 }
