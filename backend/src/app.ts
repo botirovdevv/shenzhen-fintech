@@ -65,6 +65,8 @@ export async function buildApp({ db, config, llm, logger = false }: AppOptions) 
 
   await app.register(cors, {
     origin: config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(',').map((o) => o.trim()),
+    // The default is GET,HEAD,POST; the web app also sends PATCH /me and PUT /permissions.
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   await app.register(jwt, { secret: config.JWT_SECRET, sign: { expiresIn: '7d' } });
   await app.register(rateLimit, {

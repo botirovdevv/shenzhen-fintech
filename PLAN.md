@@ -536,7 +536,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 - [x] `lib/api.ts` (fetch + token, TanStack Query) — backend yo'q paytda mock adapter
 - [x] Login/register, token `expo-secure-store` da (web'da `localStorage`)
 - [x] Onboarding va Bankni ulash ekranlari
-- [ ] Bosh sahifa: balanslar va tranzaksiyalar (haqiqiy API'dan)
+- [x] Bosh sahifa: balanslar va tranzaksiyalar (haqiqiy API'dan) — `apps/mobile/.env` va `eas.json` da `EXPO_PUBLIC_API_URL=https://femate-api.usm0n.uz/api/v1`
 - [x] Qo'shish ekrani: strukturali forma
 
 **DoD:** Aziz bilan kirib, bosh sahifada haqiqiy balans va tranzaksiyalar ko'rinadi; yangi xarajat qo'shilsa ro'yxatda paydo bo'ladi.
@@ -577,7 +577,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 
 ### Stage 7: Telegram bot, hisobot, push (BE)
 - [x] Bot: `/start <code>` orqali akkaunt ulash (`/telegram/link-code`) — [@femate_uz_bot](https://t.me/femate_uz_bot), `backend/src/bot/`
-- [ ] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat — matn tayyor; ovoz Groq kaliti bilan keyin
+- [ ] Botga matn → xarajat qo'shish; ovozli xabar → STT → xarajat — matn tayyor va haqiqiy Telegram'da tekshirildi; ovoz Groq kaliti bilan keyin
 - [x] Forward qilingan bank SMS → `smsParser` → xarajat (`source: 'sms_forward'`)
 - [x] `/today` buyrug'i → kunlik hisobot
 - [x] Scheduler: har daqiqa `report_time` ga mos foydalanuvchilarga kunlik hisobot (Telegram + push). Hisobotda `savedToday` bo'lsa, L2 da tasdiq tugmasi, L3 da avto o'tkazma
@@ -594,7 +594,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 **DoD:** Simulyator raqamlari Rules Engine testlariga mos keladi; seed'ga 500 000 so'mlik shopping qo'shilsa, anomaliya xabari keladi.
 
 ### Stage 9: Deploy, hujjatlar, dalil (BE + FE + Prezentatorlar)
-- [ ] VM'ga backend deploy — API ochiq: https://femate-api.usm0n.uz/api/v1 (Cloudflare tunnel `femate`, `femate-tunnel` konteyneri). Bot kodi tayyor, VM'ga deploy qilinishi kerak (`backend/scripts/deploy.sh`)
+- [x] VM'ga backend deploy — API ochiq: https://femate-api.usm0n.uz/api/v1 (Cloudflare tunnel `femate`, `femate-tunnel` konteyneri). Bot VM'da polling qilmoqda (`backend/scripts/deploy.sh`)
 - [ ] Expo web → Render static site; EAS APK — `pnpm build:web` (dist/) va `eas.json` (preview = APK) tayyor, deploy qilinmagan. APK hajmi: `expo-build-properties` (faqat arm64-v8a + armeabi-v7a, R8 minify, shrink, siqilgan .so) — 111 MB edi
 - [ ] `/audit/export` → demo ssenariy o'tkaziladi → `docs/proof/audit-log.json`
 - [ ] `README.md`: o'rnatish, ishga tushirish, deploy, test, arxitektura (inglizcha)
@@ -724,3 +724,5 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | 2026-10-16 | Claude (FE) | APK 111 MB va "package appears to be invalid": APK tekshirildi (zip/imzo to'g'ri, 4 ABI siqilmagan, x86/x86_64 ~47 MB). `expo-build-properties`: buildArchs arm64-v8a+armeabi-v7a, minify, shrinkResources, useLegacyPackaging. Audit eksport `GET /audit/export` ga ulandi (mock: to'liq log). typecheck/lint/test yashil | Yangi `preview` build, telefonda o'rnatib demo oqimini tekshirish |
 | 2026-10-17 | Claude (BE) | `backend/` (Fastify 5 + Drizzle + Postgres): §11 API'ning hammasi (voice → 503 `STT_UNAVAILABLE`), Policy Guard 9 qoida tartib bilan, L2 pending/approve (1–8 qayta tekshiriladi)/15 daqiqa expire, L3 avto, kill-switch, audit + eksport (karta maskalanadi), mock LLM bilan agent loop (≤ 5 tool, `<untrusted_data>`), tavsiyalar. 38 ta Vitest testi (PGlite). VM'ga deploy: `femate-db` + `femate-api` (`127.0.0.1:3100`), demo ssenariy curl bilan tekshirildi | Ilovani haqiqiy API'ga ulash (SSH tunnel, keyin `femate-api.usm0n.uz`); pass 2: bot, Groq STT, scheduler/push, anomaliya, Claude provider |
 | 2026-10-17 | Claude (BE) | Cloudflare tunnel `femate` → `femate-api.usm0n.uz` (alohida `cloudflared` konteyner, compose'da). Telegram bot @femate_uz_bot yaratildi (token faqat VM `.env` da). `backend/src/bot/`: /start kod bilan ulash (5 urinish/10 daqiqa), matn → xarajat, bank SMS parser (Uzcard/Humo, 6 namuna), /today, scheduler (report_time, Telegram + Expo push, L2 tasdiq tugmalari, L3 avto). Ilovada "Open in Telegram" tugmasi. 51 ta test yashil | Bot kodini VM'ga deploy qilish va DoD'ni haqiqiy Telegram'da tekshirish; ilovani `https://femate-api.usm0n.uz/api/v1` ga ulash |
+| 2026-10-17 | Claude (FE+BE) | Ilova haqiqiy API'ga ulandi (`apps/mobile/.env`, `eas.json` build env). CORS'ga PUT/PATCH/DELETE qo'shildi (web'da `PATCH /me`, `PUT /permissions` ishlamasdi). VM'ga qayta deploy, bot @femate_uz_bot polling. Stage 2 DoD: web ilovada Aziz bilan kirildi, bosh sahifa haqiqiy balans/limitni ko'rsatdi; curl: login → 3 hisob → "taxi 20 ming" → `transport` ro'yxatda | Bot DoD'ni haqiqiy Telegram'da tekshirish (link kod → "taxi 20000" → ilovada); Groq STT, push yuborish |
+| 2026-10-17 | Claude (BE) | Bot DoD Telegram Web'da tekshirildi: `/start <kod>` ulandi, "taxi 20000" → transport (API'da ko'rinadi), Humo SMS → Evos 45 000 food (`sms_forward`), `/today`, `report_time` hisoboti o'z vaqtida keldi, L2 Approve tugmasi → 21 548 Card → Savings, audit'da `tool.transfer_to_savings` + `action.approve`. Demo qayta seed qilindi, chat Aziz'ga ulangan. Eslatma: ilova mock rejimida bergan kodlar botda ishlamaydi | Groq STT, push yuborish, Claude provider |

@@ -6,7 +6,8 @@
   "build": {
     "base": {
       "node": "24.13.1",
-      "pnpm": "12.11.2"
+      "pnpm": "12.11.2",
+      "env": { "EXPO_PUBLIC_API_URL": "https://femate-api.usm0n.uz/api/v1" }
     },
     "development": {
       "extends": "base",
