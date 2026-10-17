@@ -162,29 +162,30 @@ export default function Settings() {
         <View style={{ ...group, padding: 12, flexDirection: 'row', gap: 8 }} accessibilityRole="radiogroup">
           {MODES.map((m) => {
             const on = appearance === m.id;
+            // PressableScale's style lands inside its Pressable, so a wrapper takes the row's space.
             return (
-              <PressableScale
-                key={m.id}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on }}
-                onPress={() => setAppearance(m.id)}
-                style={{
-                  flex: 1,
-                  borderWidth: 2,
-                  borderColor: on ? c.accent : 'transparent',
-                  borderRadius: 14,
-                  paddingTop: 10,
-                  paddingBottom: 8,
-                  backgroundColor: c.fill,
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Icon name={m.icon} size={24} color={c.label} />
-                <Text variant="footnote" weight="600">
-                  {m.label}
-                </Text>
-              </PressableScale>
+              <View key={m.id} style={{ flex: 1 }}>
+                <PressableScale
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  onPress={() => setAppearance(m.id)}
+                  style={{
+                    borderWidth: 2,
+                    borderColor: on ? c.accent : 'transparent',
+                    borderRadius: 14,
+                    paddingTop: 10,
+                    paddingBottom: 8,
+                    backgroundColor: c.fill,
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Icon name={m.icon} size={24} color={c.label} />
+                  <Text variant="footnote" weight="600" numberOfLines={1}>
+                    {m.label}
+                  </Text>
+                </PressableScale>
+              </View>
             );
           })}
         </View>

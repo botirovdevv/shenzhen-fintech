@@ -7,6 +7,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { KeyboardInput, KeyboardScreen } from '@/components/KeyboardScreen';
 import { Button, haptic, IconTile, Text } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { isAcceptablePassword, passwordStrength, type PasswordLevel } from '@/lib/password';
 import { useSession } from '@/store/session';
 import { space, useTheme } from '@/theme';
 
@@ -22,8 +23,16 @@ export default function Register() {
   const emailRef = useRef<TextInput>(null);
   const passRef = useRef<TextInput>(null);
 
+  const strength = passwordStrength(password);
+  const passwordOk = isAcceptablePassword(password);
+
   const submit = async () => {
     setError(null);
+    if (!passwordOk) {
+      haptic('warning');
+      setError(`Choose a stronger password. ${strength.hint || `Use at least 8 characters.`}`);
+      return;
+    }
     setBusy(true);
     try {
       const res = await api.register({ name, email, password });
@@ -136,7 +145,7 @@ export default function Register() {
               accessibilityLabel="Password"
               value={password}
               onChangeText={setPassword}
-              placeholder="Password (6+ characters)"
+              placeholder="Password (8+ characters)"
               placeholderTextColor={c.secondary}
               secureTextEntry
               autoComplete="new-password"
@@ -146,6 +155,7 @@ export default function Register() {
             />
           ),
         })}
+        {strength.level !== 'empty' ? <StrengthMeter level={strength.level} hint={strength.hint} /> : null}
         {error ? (
           <Text variant="footnote" color="danger" accessibilityLiveRegion="polite">
             {error}
@@ -153,7 +163,30 @@ export default function Register() {
         ) : null}
       </View>
       <View style={{ flex: 1 }} />
-      <Button title="Continue" iconRight="arrowRight" onPress={submit} loading={busy} />
+      <Button title="Continue" iconRight="arrowRight" onPress={submit} loading={busy} disabled={!passwordOk} />
     </KeyboardScreen>
+  );
+}
+
+const LEVELS = { weak: { bars: 1, label: 'Weak' }, medium: { bars: 2, label: 'Medium' }, strong: { bars: 3, label: 'Strong' } } as const;
+
+function StrengthMeter({ level, hint }: { level: Exclude<PasswordLevel, 'empty'>; hint: string }) {
+  const { c } = useTheme();
+  const color = { weak: c.danger, medium: c.warn, strong: c.accent }[level];
+  const { bars, label } = LEVELS[level];
+  return (
+    <View style={{ gap: 6 }} accessibilityLabel={`Password strength: ${label}. ${hint}`} accessibilityLiveRegion="polite">
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < bars ? color : c.fill }} />
+        ))}
+      </View>
+      <Text variant="footnote" color="secondary">
+        <Text variant="footnote" weight="600" style={{ color }}>
+          {label}
+        </Text>
+        {`  ${hint}`}
+      </Text>
+    </View>
   );
 }

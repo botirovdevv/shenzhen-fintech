@@ -120,7 +120,7 @@ export function Button({
       style={[
         {
           height,
-          paddingHorizontal: size === 'large' ? 20 : 16,
+          paddingHorizontal: { large: 20, medium: 16, small: 12 }[size],
           borderRadius: size === 'large' ? 16 : height / 2,
           backgroundColor: colors[0],
           flexDirection: 'row',
@@ -137,7 +137,15 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={font + 2} color={colors[1]!} strokeWidth={2.4} /> : null}
-          <RNText style={{ color: colors[1], fontSize: font, fontWeight: '600' }}>{title}</RNText>
+          {/* One line always: a narrow button shrinks its label a little instead of wrapping it. */}
+          <RNText
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={{ color: colors[1], fontSize: font, fontWeight: '600', flexShrink: 1 }}
+          >
+            {title}
+          </RNText>
           {iconRight ? <Icon name={iconRight} size={font + 1} color={colors[1]!} strokeWidth={2.4} /> : null}
         </>
       )}
