@@ -20,6 +20,7 @@ export const sourceIcon: Record<TransactionSource, IconName> = {
   voice: 'mic',
   sms_forward: 'send',
   agent: 'sparkleSmall',
+  card: 'card',
 };
 
 export const sourceLabel: Record<TransactionSource, string> = {
@@ -28,4 +29,5 @@ export const sourceLabel: Record<TransactionSource, string> = {
   voice: 'Voice',
   sms_forward: 'SMS',
   agent: 'Agent',
+  card: 'Card',
 };

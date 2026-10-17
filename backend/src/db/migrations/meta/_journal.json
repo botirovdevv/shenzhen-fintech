@@ -15,6 +15,13 @@
       "when": 1792239429284,
       "tag": "0001_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792243169332,
+      "tag": "0002_card",
+      "breakpoints": true
     }
   ]
 }

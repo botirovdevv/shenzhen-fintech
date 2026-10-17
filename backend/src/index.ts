@@ -17,6 +17,8 @@ const bot = config.TELEGRAM_BOT_TOKEN ? createBot(config.TELEGRAM_BOT_TOKEN, { d
 if (bot) await bot.start().catch((err: unknown) => app.log.error({ err }, 'Telegram bot failed to start'));
 else app.log.warn('TELEGRAM_BOT_TOKEN is empty: the Telegram bot is off');
 if (!app.stt) app.log.warn('GROQ_API_KEY is empty: voice input is off');
+if (!app.cards) app.log.warn('LITHIC_API_KEY is empty: the FeMate card is off');
+else if (!config.LITHIC_ASA_SECRET) app.log.warn('LITHIC_ASA_SECRET is empty: card purchase requests are not signature-checked (sandbox only)');
 const stopScheduler = startScheduler(db, bot?.sendReport, app.log);
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

@@ -13,6 +13,11 @@ const schema = z.object({
   LLM_PROVIDER: z.enum(['mock']).default('mock'),
   GROQ_API_KEY: z.string().default(''),
   TELEGRAM_BOT_TOKEN: z.string().default(''),
+  // FeMate virtual card. Empty key = card off (GET /card answers available: false).
+  LITHIC_API_KEY: z.string().default(''),
+  LITHIC_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
+  // ASA HMAC secret (scripts/lithic-setup.ts prints it). Required in production; sandbox accepts unsigned requests without it.
+  LITHIC_ASA_SECRET: z.string().default(''),
 });
 
 export type Config = z.infer<typeof schema>;

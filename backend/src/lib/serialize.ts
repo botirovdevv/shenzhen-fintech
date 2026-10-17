@@ -1,5 +1,5 @@
 // DB rows -> API contract types (@femate/shared).
-import type { Account, AgentAction, AuditEntry, Permissions, Recommendation, Transaction, User } from '@femate/shared';
+import type { Account, AgentAction, AuditEntry, CardAuthorization, PaymentCard, Permissions, Recommendation, Transaction, User } from '@femate/shared';
 
 import type * as s from '../db/schema';
 
@@ -73,4 +73,29 @@ export const toAudit = (e: Row<typeof s.auditLog>): AuditEntry => ({
   decision: e.decision,
   reason: e.reason,
   createdAt: e.createdAt.toISOString(),
+});
+
+export const toPaymentCard = (c: Row<typeof s.cards>): PaymentCard => ({
+  id: c.id,
+  network: c.network,
+  lastFour: c.lastFour,
+  expMonth: c.expMonth,
+  expYear: c.expYear,
+  frozen: c.frozen,
+  blockOverBudget: c.blockOverBudget,
+  accountId: c.accountId,
+  createdAt: c.createdAt.toISOString(),
+});
+
+export const toCardAuthorization = (a: Row<typeof s.cardAuthorizations>): CardAuthorization => ({
+  id: a.id,
+  amount: a.amount,
+  ...(a.originalAmount !== null && a.originalCurrency ? { original: { amount: a.originalAmount, currency: a.originalCurrency } } : {}),
+  merchant: a.merchant,
+  category: a.category,
+  approved: a.result === 'APPROVED',
+  result: a.result,
+  reason: a.reason,
+  ...(a.transactionId ? { transactionId: a.transactionId } : {}),
+  createdAt: a.createdAt.toISOString(),
 });

@@ -49,6 +49,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="transactions" />
+          <Stack.Screen name="card" />
           <Stack.Screen
             name="action/[id]"
             options={{

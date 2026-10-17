@@ -6,6 +6,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 
 import { createProvider } from './agent/llm';
+import { createLithic, type CardIssuer } from './card/lithic';
 import type { LlmProvider } from './agent/llm/provider';
 import type { Config } from './config';
 import type { Db } from './db/client';
@@ -15,6 +16,8 @@ import { agentRoutes } from './routes/agent';
 import { auditRoutes } from './routes/audit';
 import { authRoutes } from './routes/auth';
 import { bankRoutes } from './routes/bank';
+import { cardRoutes } from './routes/card';
+import { lithicRoutes } from './routes/lithic';
 import { meRoutes } from './routes/me';
 import { permissionRoutes } from './routes/permissions';
 import { summaryRoutes } from './routes/summary';
@@ -28,6 +31,8 @@ declare module 'fastify' {
     llm: LlmProvider;
     /** Null when GROQ_API_KEY is empty: voice input answers 503 STT_UNAVAILABLE. */
     stt: SttProvider | null;
+    /** Null when LITHIC_API_KEY is empty: the FeMate card is off. */
+    cards: CardIssuer | null;
     config: Config;
   }
   interface FastifyRequest {
@@ -47,14 +52,16 @@ export interface AppOptions {
   config: Config;
   llm?: LlmProvider;
   stt?: SttProvider | null;
+  cards?: CardIssuer | null;
   logger?: boolean;
 }
 
-export async function buildApp({ db, config, llm, stt, logger = false }: AppOptions) {
+export async function buildApp({ db, config, llm, stt, cards, logger = false }: AppOptions) {
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 1024 * 1024 });
   app.decorate('db', db);
   app.decorate('llm', llm ?? createProvider(config));
   app.decorate('stt', stt === undefined ? createGroqStt(config.GROQ_API_KEY) : stt);
+  app.decorate('cards', cards === undefined ? createLithic(config.LITHIC_API_KEY, config.LITHIC_ENV) : cards);
   app.decorate('config', config);
   app.decorateRequest('userId', '');
   // POST endpoints without a body (approve, kill switch) must not fail when a client still sends a JSON content type.
@@ -108,9 +115,10 @@ export async function buildApp({ db, config, llm, stt, logger = false }: AppOpti
     async (api) => {
       api.get('/health', async () => ({ ok: true }));
       await api.register(authRoutes);
+      await api.register(lithicRoutes);
       await api.register(async (priv) => {
         priv.addHook('onRequest', authenticate);
-        for (const routes of [meRoutes, bankRoutes, transactionRoutes, summaryRoutes, agentRoutes, permissionRoutes, auditRoutes, telegramRoutes]) {
+        for (const routes of [meRoutes, bankRoutes, cardRoutes, transactionRoutes, summaryRoutes, agentRoutes, permissionRoutes, auditRoutes, telegramRoutes]) {
           await priv.register(routes);
         }
       });

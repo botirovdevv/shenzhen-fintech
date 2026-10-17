@@ -167,8 +167,8 @@ export default function Home() {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(accounts.data ?? []).map((a) => {
             const st = accountStyle[a.type]!;
-            return (
-              <View key={a.id} style={{ flex: 1, backgroundColor: st.bg, borderRadius: 14, padding: 12, gap: 6 }}>
+            const tile = (
+              <>
                 <Icon name={st.icon} size={20} color={st.fg} />
                 <View>
                   <Text variant="caption" color={st.sub} numberOfLines={1}>
@@ -178,6 +178,24 @@ export default function Home() {
                     {formatAmount(a.balance, cur)}
                   </Text>
                 </View>
+              </>
+            );
+            const box = { backgroundColor: st.bg, borderRadius: 14, padding: 12, gap: 6 };
+            // The card account opens the FeMate card screen.
+            return a.type === 'card' ? (
+              <View key={a.id} style={{ flex: 1 }}>
+                <PressableScale
+                  onPress={() => router.push('/card')}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${a.name}, open FeMate card`}
+                  style={[box, { flexGrow: 1 }]}
+                >
+                  {tile}
+                </PressableScale>
+              </View>
+            ) : (
+              <View key={a.id} style={[box, { flex: 1 }]}>
+                {tile}
               </View>
             );
           })}

@@ -5,7 +5,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 
 import { audit } from '../audit/audit';
 import type { Db } from '../db/client';
-import { accounts, agentActions, budgets, permissions, recommendations, transactions, users } from '../db/schema';
+import { accounts, agentActions, budgets, cardAuthorizations, permissions, recommendations, transactions, users } from '../db/schema';
 import { notFound } from '../lib/errors';
 
 export async function userCurrency(db: Db, userId: string): Promise<Currency> {
@@ -63,6 +63,7 @@ export async function changeCurrency(db: Db, userId: string, to: Currency) {
       .update(transactions)
       .set({ amount: sql`${transactions.originalAmount}`, originalAmount: null, originalCurrency: null })
       .where(and(eq(transactions.userId, userId), eq(transactions.originalCurrency, to)));
+    await tx.update(cardAuthorizations).set({ amount: conv(cardAuthorizations.amount) }).where(eq(cardAuthorizations.userId, userId));
     await tx.update(budgets).set({ monthlyLimit: convRound(budgets.monthlyLimit) }).where(eq(budgets.userId, userId));
     // Payloads hold the same numbers; only well-formed ones (blocked junk args stay as they were).
     for (const key of ['amount', 'monthlyLimit']) {

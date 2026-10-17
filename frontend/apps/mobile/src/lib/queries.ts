@@ -1,5 +1,5 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AgentAction, CreateTransactionBody, UpdateMeBody, UpdatePermissionsBody } from '@femate/shared';
+import type { AgentAction, CreateTransactionBody, UpdateCardBody, UpdateMeBody, UpdatePermissionsBody } from '@femate/shared';
 
 import { api } from './api';
 
@@ -17,6 +17,8 @@ export const keys = {
   actions: (status?: string) => ['actions', status ?? 'all'] as const,
   permissions: ['permissions'] as const,
   audit: ['audit'] as const,
+  card: ['card'] as const,
+  cardAuthorizations: ['card', 'authorizations'] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
@@ -29,6 +31,8 @@ export const useRecommendations = () => useQuery({ queryKey: keys.recommendation
 export const useActions = (status?: AgentAction['status']) =>
   useQuery({ queryKey: keys.actions(status), queryFn: () => api.actions(status), refetchInterval: 30_000 });
 export const usePermissions = () => useQuery({ queryKey: keys.permissions, queryFn: api.permissions });
+export const useCard = () => useQuery({ queryKey: keys.card, queryFn: api.card });
+export const useCardAuthorizations = () => useQuery({ queryKey: keys.cardAuthorizations, queryFn: api.cardAuthorizations });
 export const useAudit = () => useQuery({ queryKey: keys.audit, queryFn: () => api.audit(50) });
 
 // Anything that can move money or change rules refreshes balances, actions and the audit log.
@@ -36,7 +40,7 @@ function useInvalidateMoney() {
   const qc = useQueryClient();
   return () =>
     Promise.all(
-      [keys.accounts, keys.transactions, keys.daily, ['actions'], keys.audit, keys.permissions, keys.recommendations, ['summary']].map(
+      [keys.accounts, keys.transactions, keys.daily, ['actions'], keys.audit, keys.permissions, keys.recommendations, ['summary'], keys.card].map(
         (k) => qc.invalidateQueries({ queryKey: k }),
       ),
     );
@@ -99,4 +103,22 @@ export function useUpdateMe() {
       void qc.invalidateQueries({ queryKey: keys.daily });
     },
   });
+}
+
+export function useIssueCard() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({ mutationFn: api.issueCard, onSuccess: invalidate });
+}
+
+export function useUpdateCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: UpdateCardBody) => api.updateCard(b),
+    onSuccess: () => Promise.all([keys.card, keys.audit].map((k) => qc.invalidateQueries({ queryKey: k }))),
+  });
+}
+
+export function useSimulatePurchase() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({ mutationFn: api.simulatePurchase, onSuccess: invalidate });
 }

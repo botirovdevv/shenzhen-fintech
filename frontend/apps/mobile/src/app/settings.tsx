@@ -308,6 +308,13 @@ export default function Settings() {
       </PickerSheet>
 
       <View>
+        <SectionLabel>FeMate card</SectionLabel>
+        <View style={group}>
+          <ListRow icon="card" tile="#0E7A4B" title="Virtual Visa card" last onPress={() => router.push('/card')} />
+        </View>
+      </View>
+
+      <View>
         <SectionLabel>Telegram bot</SectionLabel>
         <View style={{ ...group, padding: 16, gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 12 }}>

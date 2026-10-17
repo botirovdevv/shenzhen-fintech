@@ -9,6 +9,9 @@ import {
   type AgentAction,
   type AuditEntry,
   type AuthResponse,
+  type CardAuthorization,
+  type CardDetails,
+  type CardStatus,
   type Category,
   type ChatResponse,
   type ConnectBankBody,
@@ -17,14 +20,18 @@ import {
   type LoginBody,
   type Page,
   type PeriodSummary,
+  type PaymentCard,
   type PermissionLevel,
   type Permissions,
   type PolicyErrorCode,
   type Recommendation,
   type RegisterBody,
   type SimulateBody,
+  type SimulatePurchaseBody,
+  type SimulatePurchaseResponse,
   type SimulateResponse,
   type Transaction,
+  type UpdateCardBody,
   type UpdateMeBody,
   type UpdatePermissionsBody,
   type User,
@@ -90,6 +97,8 @@ interface Db {
   actions: AgentAction[];
   recommendations: Recommendation[];
   audit: AuditEntry[];
+  card: PaymentCard | null;
+  cardAuthorizations: CardAuthorization[];
 }
 
 function seed(): Db {
@@ -282,10 +291,14 @@ function seed(): Db {
         createdAt: at(0, 9, 0),
       },
     ],
+    card: null,
+    cardAuthorizations: [],
   };
 }
 
 const db: Db = seed();
+// Lithic's sandbox test number.
+const MOCK_PAN = '4111111289144142';
 
 // Stand-in for Groq Whisper: the demo phrases from PLAN.md §15.
 const VOICE_SAMPLES = ['Bozorga qirq besh ming ishlatdim', 'Taksiga yigirma ming berdim', "Dorixonaga o'ttiz besh ming"];
@@ -687,6 +700,91 @@ export const mockApi = {
   async auditExport(): Promise<AuditEntry[]> {
     await delay(120);
     return [...db.audit];
+  },
+  // FeMate card: same rules as the server's ASA decision (frozen, funds), without a budget check.
+  async card(): Promise<CardStatus> {
+    await delay(120);
+    return { available: true, sandbox: true, card: db.card ? { ...db.card } : null };
+  },
+  async issueCard(): Promise<PaymentCard> {
+    await delay(700);
+    if (db.card) throw new ApiError('CARD_EXISTS', 'You already have a FeMate card.');
+    const acc = account('card');
+    db.card = {
+      id: newId('card'),
+      network: 'VISA',
+      lastFour: MOCK_PAN.slice(-4),
+      expMonth: '06',
+      expYear: '2031',
+      frozen: false,
+      blockOverBudget: true,
+      accountId: acc.id,
+      createdAt: new Date().toISOString(),
+    };
+    acc.name = `Visa ·· ${db.card.lastFour}`;
+    log({ actor: 'user', event: 'card.issue', decision: 'info', reason: `Visa virtual card ·· ${db.card.lastFour} issued (sandbox).` });
+    return { ...db.card };
+  },
+  async cardDetails(): Promise<CardDetails> {
+    await delay(300);
+    if (!db.card) throw new ApiError('NO_CARD', 'You don’t have a FeMate card yet.');
+    log({ actor: 'user', event: 'card.reveal', decision: 'info', reason: `Card ·· ${db.card.lastFour} number shown in the app.` });
+    return { pan: MOCK_PAN, cvv: '123', expMonth: db.card.expMonth, expYear: db.card.expYear };
+  },
+  async updateCard(body: UpdateCardBody): Promise<PaymentCard> {
+    await delay(250);
+    if (!db.card) throw new ApiError('NO_CARD', 'You don’t have a FeMate card yet.');
+    db.card = { ...db.card, ...body };
+    if (body.frozen !== undefined) {
+      log({ actor: 'user', event: 'card.update', decision: 'info', reason: `Visa ·· ${db.card.lastFour}: ${body.frozen ? 'frozen' : 'unfrozen'}.` });
+    }
+    return { ...db.card };
+  },
+  async cardAuthorizations(): Promise<CardAuthorization[]> {
+    await delay(120);
+    return db.cardAuthorizations.slice(0, 20);
+  },
+  async simulatePurchase(body: SimulatePurchaseBody): Promise<SimulatePurchaseResponse> {
+    await delay(900); // merchant -> network -> FeMate decision round trip
+    if (!db.card) throw new ApiError('NO_CARD', 'You don’t have a FeMate card yet.');
+    const acc = account('card');
+    const usd = convertMoney(body.amount, db.user.currency, 'USD');
+    const category = categorize(body.merchant).category;
+    const result = db.card.frozen ? 'CARD_PAUSED' : acc.balance < body.amount ? 'INSUFFICIENT_FUNDS' : 'APPROVED';
+    const reason =
+      result === 'APPROVED'
+        ? `${body.merchant} approved.`
+        : `${body.merchant} declined: ${result === 'CARD_PAUSED' ? 'your card is frozen' : 'not enough money on the card'}.`;
+    const auth: CardAuthorization = {
+      id: newId('cauth'),
+      amount: body.amount,
+      ...(db.user.currency !== 'USD' ? { original: { amount: usd, currency: 'USD' as const } } : {}),
+      merchant: body.merchant,
+      category: category === 'transfer' ? 'other' : category,
+      approved: result === 'APPROVED',
+      result,
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+    if (auth.approved) {
+      acc.balance -= body.amount;
+      const tx: Transaction = {
+        id: newId('tx'),
+        accountId: acc.id,
+        amount: body.amount,
+        direction: 'out',
+        category: auth.category,
+        description: body.merchant,
+        source: 'card',
+        occurredAt: auth.createdAt,
+        ...(auth.original ? { original: auth.original } : {}),
+      };
+      db.transactions.unshift(tx);
+      auth.transactionId = tx.id;
+    }
+    db.cardAuthorizations.unshift(auth);
+    log({ actor: 'system', event: 'card.authorization', decision: auth.approved ? 'allowed' : 'blocked', reason });
+    return { authorization: auth };
   },
   async telegramLinkCode(): Promise<{ code: string; expiresAt: string }> {
     await delay(300);

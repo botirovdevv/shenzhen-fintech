@@ -147,3 +147,48 @@ export const telegramLinkCodes = pgTable('telegram_link_codes', {
   userId: userRef(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
+
+// FeMate virtual card (Lithic), one per user. The full number and CVV stay at Lithic.
+export const cards = pgTable('cards', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  // Purchases are paid from this account (the user's card account).
+  accountId: text('account_id')
+    .notNull()
+    .references(() => accounts.id, { onDelete: 'cascade' }),
+  lithicToken: text('lithic_token').notNull().unique(),
+  network: text('network').$type<'VISA' | 'MASTERCARD'>().notNull(),
+  lastFour: text('last_four').notNull(),
+  expMonth: text('exp_month').notNull(),
+  expYear: text('exp_year').notNull(),
+  frozen: boolean('frozen').notNull().default(false),
+  blockOverBudget: boolean('block_over_budget').notNull().default(true),
+  createdAt: createdAt(),
+});
+
+// Every live approve/decline decision (Auth Stream Access). The Lithic token makes retries idempotent.
+export const cardAuthorizations = pgTable(
+  'card_authorizations',
+  {
+    id: text('id').primaryKey(),
+    userId: userRef(),
+    cardId: text('card_id')
+      .notNull()
+      .references(() => cards.id, { onDelete: 'cascade' }),
+    lithicToken: text('lithic_token').notNull().unique(),
+    amount: integer('amount').notNull(),
+    originalAmount: integer('original_amount'),
+    originalCurrency: text('original_currency').$type<Currency>(),
+    merchant: text('merchant').notNull(),
+    mcc: text('mcc'),
+    category: text('category').$type<Category>().notNull(),
+    result: text('result').notNull(),
+    reason: text('reason').notNull(),
+    transactionId: text('transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('card_auth_user_time_idx').on(t.userId, t.createdAt)],
+);

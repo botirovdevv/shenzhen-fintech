@@ -39,7 +39,8 @@ export interface Account {
   currency: Currency;
 }
 
-export type TransactionSource = 'bank' | 'manual' | 'voice' | 'sms_forward' | 'agent';
+// 'card': a purchase with the FeMate virtual card, approved live by the server.
+export type TransactionSource = 'bank' | 'manual' | 'voice' | 'sms_forward' | 'agent' | 'card';
 
 export interface Transaction {
   id: string;
@@ -100,6 +101,67 @@ export interface AuditEntry {
   decision: 'allowed' | 'blocked' | 'info';
   reason: string;
   createdAt: string;
+}
+
+// FeMate virtual card (Lithic). Purchases spend from the user's card account and are approved or
+// declined live by server rules: frozen, funds, category budget.
+export interface PaymentCard {
+  id: string;
+  network: 'VISA' | 'MASTERCARD';
+  lastFour: string;
+  expMonth: string;
+  expYear: string;
+  frozen: boolean;
+  /** Decline a purchase that would take its category over the monthly budget. */
+  blockOverBudget: boolean;
+  /** The account purchases are paid from (the user's card account). */
+  accountId: string;
+  createdAt: string;
+}
+
+export interface CardStatus {
+  /** False when the server has no card provider configured. */
+  available: boolean;
+  /** Sandbox cards hold no real money; purchases can be simulated. */
+  sandbox: boolean;
+  card: PaymentCard | null;
+}
+
+/** Full number and CVV, fetched from the provider on demand and never stored by FeMate. */
+export interface CardDetails {
+  pan: string;
+  cvv: string;
+  expMonth: string;
+  expYear: string;
+}
+
+export interface CardAuthorization {
+  id: string;
+  /** In the user's currency. */
+  amount: number;
+  /** What the merchant charged, when in another currency. */
+  original?: { amount: number; currency: Currency };
+  merchant: string;
+  category: Category;
+  approved: boolean;
+  /** APPROVED or the decline code sent to the network (INSUFFICIENT_FUNDS, CARD_PAUSED, ...). */
+  result: string;
+  reason: string;
+  transactionId?: string;
+  createdAt: string;
+}
+
+export type UpdateCardBody = Partial<Pick<PaymentCard, 'frozen' | 'blockOverBudget'>>;
+
+/** Sandbox only: `amount` in the user's currency, sent to the card network in USD. */
+export interface SimulatePurchaseBody {
+  amount: number;
+  merchant: string;
+  mcc?: string;
+}
+
+export interface SimulatePurchaseResponse {
+  authorization: CardAuthorization;
 }
 
 // Requests and responses

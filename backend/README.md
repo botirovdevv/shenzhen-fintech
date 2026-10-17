@@ -7,7 +7,8 @@ PLAN.md §8, in order) and every outcome lands in the **audit log**.
 ```
 src/
   app.ts, index.ts, config.ts   Fastify app factory, server start (runs migrations), env
-  routes/                       /api/v1/* endpoints (auth, me, bank, transactions, summary, agent, permissions, audit, telegram)
+  routes/                       /api/v1/* endpoints (auth, me, bank, card, lithic, transactions, summary, agent, permissions, audit, telegram)
+  card/                         lithic.ts (Lithic client, ASA signature check), cards.ts (issue, live approve/decline)
   bot/                          Telegram bot (grammY): core.ts (logic), bot.ts (wiring), scheduler.ts (daily report + push)
   policy/                       policyGuard.ts (checks 1–9), actions.ts (pending / approve / reject / expire), limits.ts
   agent/                        agent.ts (loop, ≤ 5 tool calls), tools.ts, prompts.ts, recommendations.ts, llm/ (provider + mock)
@@ -25,7 +26,7 @@ Node 20+ and pnpm. Shared API types come from `../frontend/packages/shared` (`@f
 ```bash
 cd backend
 pnpm install
-pnpm test          # 51 tests: rules, every Policy Guard check, demo scenario, agent loop, SMS parser, bot
+pnpm test          # 76 tests: rules, every Policy Guard check, demo scenario, agent loop, SMS parser, bot, card
 pnpm typecheck
 ```
 
@@ -82,6 +83,25 @@ bot says voice is off.
   to savings with ✅ Approve / ❌ Reject buttons; at L3 it is done within limits; below L2 nothing.
 - The bot can't move money from typed text. Only the Approve button can, and approval re-runs
   Policy Guard like the app does.
+
+## FeMate card (Lithic)
+
+A virtual Visa card per user, issued on [Lithic](https://lithic.com) (`src/card/`, `src/routes/card.ts`).
+Purchases spend from the user's card account (renamed "Visa ·· 4142"). For every purchase Lithic calls
+**Auth Stream Access** at `POST /api/v1/lithic/asa` and FeMate answers within its 6-second window. Plain code
+decides (`card/cards.ts`), checking in order: an amount it can read, card frozen (`CARD_PAUSED`), balance
+(`INSUFFICIENT_FUNDS`), and the category's monthly budget when "Block over-budget purchases" is on
+(`VELOCITY_EXCEEDED`). If approved, the account is debited and a `source: 'card'` transaction is written in one DB
+transaction. Every decision goes to `card_authorizations` (idempotent on Lithic's token) and the audit log.
+
+- Endpoints: `GET/POST/PATCH /card`, `GET /card/details` (number + CVV fetched from Lithic each time and
+  never stored; each reveal is audited), `GET /card/authorizations`, `POST /card/simulate` (sandbox only:
+  `/v1/simulate/authorize`, so Lithic runs the real ASA round trip).
+- Setup: create a sandbox account at lithic.com and put `LITHIC_API_KEY` in `.env`, then enroll the ASA URL and get its secret:
+  `pnpm lithic:setup https://femate-api.usm0n.uz/api/v1/lithic/asa` → add `LITHIC_ASA_SECRET` to `.env` and redeploy.
+  Without the secret, sandbox accepts unsigned ASA requests (a warning is logged); production refuses them.
+- With `LITHIC_API_KEY` empty, `GET /card` answers `available: false` and the app says the card is off.
+- Purchases are recorded at authorization. Clearing and reversals (amount changes, refunds) aren't followed yet.
 
 ## Not yet (pass 2)
 
