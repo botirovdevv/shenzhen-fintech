@@ -1,0 +1,101 @@
+[
+  {
+    "id": "aud_dw4rigvsb15gnt",
+    "actor": "agent",
+    "event": "tool.transfer_to_savings",
+    "permissionLevel": "L1",
+    "decision": "blocked",
+    "reason": "KILL_SWITCH_ACTIVE: The agent is stopped by the kill switch.",
+    "createdAt": "2026-10-17T14:50:41.846Z",
+    "details": {
+      "args": {
+        "amount": 20000,
+        "reason": "User requested transfer to savings via chat"
+      }
+    }
+  },
+  {
+    "id": "aud_0v38hjfi8m6iah",
+    "actor": "user",
+    "event": "permissions.kill_switch",
+    "permissionLevel": "L1",
+    "decision": "info",
+    "reason": "Agent disabled. 0 pending actions rejected.",
+    "createdAt": "2026-10-17T14:50:38.986Z"
+  },
+  {
+    "id": "aud_1r93l1x762egoc",
+    "actor": "agent",
+    "event": "tool.transfer_to_savings",
+    "permissionLevel": "L2",
+    "decision": "blocked",
+    "reason": "PER_ACTION_LIMIT: 500 000 UZS is over your 100 000 UZS per-action limit.",
+    "createdAt": "2026-10-17T14:50:28.159Z",
+    "details": {
+      "args": {
+        "amount": 500000,
+        "reason": "User request: Move 500000 to savings"
+      }
+    }
+  },
+  {
+    "id": "aud_x8w207ozbq9pxn",
+    "actor": "user",
+    "event": "action.approve",
+    "permissionLevel": "L2",
+    "decision": "allowed",
+    "reason": "Approved: 20 000 UZS Card → Savings.",
+    "createdAt": "2026-10-17T14:50:23.674Z",
+    "details": {
+      "actionId": "act_99clh137kv8bcm"
+    }
+  },
+  {
+    "id": "aud_tq2qyuanktvt15",
+    "actor": "agent",
+    "event": "tool.transfer_to_savings",
+    "permissionLevel": "L2",
+    "decision": "allowed",
+    "reason": "20 000 UZS Card → Savings. Waiting for your approval.",
+    "createdAt": "2026-10-17T14:50:14.346Z",
+    "details": {
+      "args": {
+        "amount": 20000,
+        "reason": "Bugun tejalgan 20 000 so'm",
+        "toAccountId": "acc_aziz_savings",
+        "fromAccountId": "acc_aziz_card"
+      },
+      "actionId": "act_99clh137kv8bcm"
+    }
+  },
+  {
+    "id": "aud_8h7y93bhgv1im4",
+    "actor": "user",
+    "event": "recommendation.apply",
+    "permissionLevel": "L2",
+    "decision": "info",
+    "reason": "Applied: Take the bus on even days.",
+    "createdAt": "2026-10-17T14:50:08.923Z",
+    "details": {
+      "recommendationId": "rec_vgxxsqqthhxjax"
+    }
+  },
+  {
+    "id": "aud_s8sq5qwhbj6qxf",
+    "actor": "user",
+    "event": "telegram.link",
+    "permissionLevel": "L2",
+    "decision": "info",
+    "reason": "Telegram chat linked. The bot can read and add expenses; it cannot move money.",
+    "createdAt": "2026-10-17T14:45:38.566Z"
+  },
+  {
+    "id": "aud_pr3ckgfmu5juxd",
+    "actor": "user",
+    "event": "bank.connect",
+    "permissionLevel": "L2",
+    "decision": "info",
+    "reason": "Sandbox Bank connected at L2 with read_balance, read_transactions, transfer_own.",
+    "createdAt": "2026-10-17T14:44:49.541Z"
+  }
+]
