@@ -35,6 +35,7 @@ import type {
   User,
 } from '@femate/shared';
 
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { useSession } from '@/store/session';
@@ -45,20 +46,43 @@ export { ApiError };
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? '';
 export const usingMock = BASE_URL === '';
 
+// Without a timeout a stalled connection leaves the spinner on forever instead of showing an error.
+const TIMEOUT_MS = 20_000;
+const VOICE_TIMEOUT_MS = 60_000;
+
+const networkError = (e: unknown) =>
+  (e as { name?: string })?.name === 'AbortError' || (e as { name?: string })?.name === 'TimeoutError'
+    ? new ApiError('TIMEOUT', 'The FeMate server is taking too long to answer. Check your connection and try again.')
+    : new ApiError('NETWORK', 'Can’t reach the FeMate server. Check your connection and try again.');
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = useSession.getState().token;
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, {
-      method,
-      headers: {
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    res = await fetchWithTimeout(
+      `${BASE_URL}${path}`,
+      {
+        method,
+        headers: {
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new ApiError('NETWORK', 'Can’t reach the FeMate server. Check your connection and try again.');
+      TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw networkError(e);
   }
   if (res.status === 401) {
     await useSession.getState().signOut();
@@ -80,26 +104,31 @@ const qs = (params: Record<string, string | number | undefined>) => {
   return s ? `?${s}` : '';
 };
 
-// POST /transactions/voice (multipart field "audio"). Native fetch takes { uri, name, type };
-// on web the recorder gives a blob: URL, so the blob itself is appended.
+// POST /transactions/voice (multipart field "audio"). Expo replaces the global fetch with expo/fetch,
+// which can't send React Native's { uri, name, type } parts, so native appends an expo-file-system File.
+// On web the recorder gives a blob: URL, so the blob itself is appended.
 async function uploadVoice(uri: string): Promise<{ transcript: string; transaction: Transaction }> {
   const form = new FormData();
   if (Platform.OS === 'web') {
     const blob = await (await fetch(uri)).blob();
     form.append('audio', blob, 'voice.webm');
   } else {
-    form.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as unknown as Blob);
+    form.append('audio', new File(uri) as unknown as Blob);
   }
   const token = useSession.getState().token;
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}/transactions/voice`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-  } catch {
-    throw new ApiError('NETWORK', 'Can’t reach the FeMate server. Check your connection and try again.');
+    res = await fetchWithTimeout(
+      `${BASE_URL}/transactions/voice`,
+      {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      },
+      VOICE_TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw networkError(e);
   }
   const data = (await res.json().catch(() => null)) as { transcript: string; transaction: Transaction } | ApiErrorBody | null;
   if (!res.ok) {

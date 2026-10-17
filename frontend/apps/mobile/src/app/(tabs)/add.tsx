@@ -109,9 +109,14 @@ export default function Add() {
       setError('Microphone access is off. Allow it in your phone’s Settings, or type the expense.');
       return;
     }
-    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
+    try {
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+    } catch (e) {
+      setError(`Couldn’t start the microphone (${e instanceof Error ? e.message : String(e)}). Type the expense instead.`);
+      return;
+    }
     haptic('medium');
     stopTimer.current = setTimeout(() => void stopRecording(), MAX_RECORDING_MS);
   };
