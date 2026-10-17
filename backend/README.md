@@ -11,7 +11,7 @@ src/
   card/                         lithic.ts (Lithic client, ASA signature check), cards.ts (issue, live approve/decline)
   bot/                          Telegram bot (grammY): core.ts (logic), bot.ts (wiring), scheduler.ts (daily report + push)
   policy/                       policyGuard.ts (checks 1–9), actions.ts (pending / approve / reject / expire), limits.ts
-  agent/                        agent.ts (loop, ≤ 5 tool calls), tools.ts, prompts.ts, recommendations.ts, llm/ (provider + mock)
+  agent/                        agent.ts (loop, ≤ 5 tool calls), tools.ts, prompts.ts, recommendations.ts, llm/ (provider, mock, openai)
   bank/                         mockBank.ts (sandbox accounts, atomic card → savings), expenses.ts
   rules/                        dailyAllowance.ts, whatIf.ts, categorize.ts, smsParser.ts — deterministic numbers
   audit/audit.ts                append-only log, card numbers masked
@@ -106,4 +106,4 @@ transaction. Every decision goes to `card_authorizations` (idempotent on Lithic'
 ## Not yet (pass 2)
 
 - Anomaly alerts
-- Claude provider: `LLM_PROVIDER=mock` is the only one so far
+- Claude provider (`LLM_PROVIDER` is `mock` or `openai` so far)

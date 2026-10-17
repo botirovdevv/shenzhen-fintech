@@ -17,6 +17,8 @@ export const config: Config = {
   CORS_ORIGIN: '*',
   SEED_DEMO: true,
   LLM_PROVIDER: 'mock',
+  OPENAI_API_KEY: '',
+  OPENAI_MODEL: 'gpt-5-mini',
   GROQ_API_KEY: '',
   TELEGRAM_BOT_TOKEN: '',
   LITHIC_API_KEY: '',

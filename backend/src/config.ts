@@ -10,7 +10,9 @@ const schema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-  LLM_PROVIDER: z.enum(['mock']).default('mock'),
+  LLM_PROVIDER: z.enum(['mock', 'openai']).default('mock'),
+  OPENAI_API_KEY: z.string().default(''),
+  OPENAI_MODEL: z.string().default('gpt-5-mini'),
   GROQ_API_KEY: z.string().default(''),
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   // FeMate virtual card. Empty key = card off (GET /card answers available: false).
