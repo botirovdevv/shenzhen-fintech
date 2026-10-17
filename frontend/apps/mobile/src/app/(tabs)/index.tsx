@@ -8,11 +8,13 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { Screen } from '@/components/Screen';
 import { Banner, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
-import { categoryLabel, formatAmount, formatTime, greeting } from '@/lib/format';
+import { useCurrency } from '@/lib/currency';
+import { categoryLabel, formatAmount, formatMoney, formatTime, greeting } from '@/lib/format';
 import { useAccounts, useActions, useDailySummary, useMe, useTransactions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
 export default function Home() {
+  const cur = useCurrency();
   const { c } = useTheme();
   const me = useMe();
   const accounts = useAccounts();
@@ -85,7 +87,7 @@ export default function Home() {
           icon="shieldAlert"
           title={
             firstPending.type === 'transfer_to_savings'
-              ? `Move ${formatAmount(firstPending.amount ?? 0)} UZS to Savings?`
+              ? `Move ${formatMoney(firstPending.amount ?? 0, cur)} to Savings?`
               : 'Set a food budget?'
           }
           subtitle="Waiting for your approval"
@@ -110,9 +112,9 @@ export default function Home() {
                   {over ? 'Over today’s limit' : 'Left for today'}
                 </Text>
                 <Text variant="title" tabular color={over ? c.warn : c.accent} style={{ fontSize: 28 }}>
-                  {formatAmount(Math.abs(s.remainingToday))}{' '}
+                  {formatAmount(Math.abs(s.remainingToday), cur)}{' '}
                   <Text variant="callout" weight="600" color={over ? c.warn : c.accent}>
-                    UZS
+                    {cur}
                   </Text>
                 </Text>
               </View>
@@ -122,7 +124,7 @@ export default function Home() {
                   <Text variant="footnote" color="secondary">
                     Spent{' '}
                     <Text variant="footnote" weight="600" tabular>
-                      {formatAmount(s.todaySpent)}
+                      {formatAmount(s.todaySpent, cur)}
                     </Text>
                   </Text>
                 </View>
@@ -131,7 +133,7 @@ export default function Home() {
                   <Text variant="footnote" color="secondary">
                     Daily limit{' '}
                     <Text variant="footnote" weight="600" tabular>
-                      {formatAmount(s.dailyAllowance)}
+                      {formatAmount(s.dailyAllowance, cur)}
                     </Text>
                   </Text>
                 </View>
@@ -156,9 +158,9 @@ export default function Home() {
             </Text>
           </View>
           <Text variant="largeTitle" tabular style={{ fontSize: 32 }}>
-            {formatAmount(total)}{' '}
+            {formatAmount(total, cur)}{' '}
             <Text variant="headline" color="secondary">
-              UZS
+              {cur}
             </Text>
           </Text>
         </View>
@@ -173,7 +175,7 @@ export default function Home() {
                     {a.name}
                   </Text>
                   <Text variant="callout" weight="600" color={st.fg} tabular numberOfLines={1} adjustsFontSizeToFit>
-                    {formatAmount(a.balance)}
+                    {formatAmount(a.balance, cur)}
                   </Text>
                 </View>
               </View>
@@ -208,7 +210,7 @@ export default function Home() {
                   {categoryLabel[cat]}
                 </Text>
                 <Text variant="callout" color="secondary" tabular>
-                  {formatAmount(amount)}
+                  {formatAmount(amount, cur)}
                 </Text>
               </View>
               <ProgressBar value={amount / max} color={c.categoryShades[i] ?? c.accent} track={c.fill} />
@@ -262,9 +264,16 @@ export default function Home() {
                 </Text>
               </View>
             </View>
-            <Text variant="body" weight="600" tabular>
-              −{formatAmount(t.amount)}
-            </Text>
+            <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              <Text variant="body" weight="600" tabular>
+                −{formatAmount(t.amount, cur)}
+              </Text>
+              {t.original ? (
+                <Text variant="footnote" color="secondary" tabular>
+                  {formatMoney(t.original.amount, t.original.currency)}
+                </Text>
+              ) : null}
+            </View>
           </View>
         ))}
       </Card>

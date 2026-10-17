@@ -1,14 +1,15 @@
 // Agent actions (PLAN.md §8 rule 9): Policy Guard result -> blocked / pending / executed row,
 // plus the user's approve / reject. Approval re-runs checks 1–8 before any money moves.
-import type { AgentAction } from '@femate/shared';
+import type { AgentAction, Currency } from '@femate/shared';
 import { and, eq, lt, sql } from 'drizzle-orm';
 
 import { audit } from '../audit/audit';
+import { userCurrency } from '../bank/currency';
 import { transferToSavings } from '../bank/mockBank';
 import type { Db } from '../db/client';
 import { agentActions, budgets } from '../db/schema';
 import { ApiError, notFound } from '../lib/errors';
-import { fmt } from '../lib/format';
+import { money } from '../lib/format';
 import { newId } from '../lib/ids';
 import { toAction } from '../lib/serialize';
 import { PENDING_TTL_MS } from './limits';
@@ -16,10 +17,10 @@ import { checkPolicy, type ActionTool, type ToolArgs } from './policyGuard';
 
 type ActionRow = typeof agentActions.$inferSelect;
 
-function describe(tool: ActionTool, payload: Record<string, unknown>): string {
+function describe(tool: ActionTool, payload: Record<string, unknown>, currency: Currency): string {
   return tool === 'transfer_to_savings'
-    ? `${fmt(Number(payload.amount))} UZS Card → Savings`
-    : `${String(payload.category)} budget ${fmt(Number(payload.monthlyLimit))} UZS/month`;
+    ? `${money(Number(payload.amount), currency)} Card → Savings`
+    : `${String(payload.category)} budget ${money(Number(payload.monthlyLimit), currency)}/month`;
 }
 
 async function execute(db: Db, userId: string, a: ActionRow) {
@@ -69,7 +70,7 @@ export async function proposeAction(
   }
 
   const payload: Record<string, unknown> = { ...d.args, ...d.transfer };
-  const what = describe(tool, payload);
+  const what = describe(tool, payload, await userCurrency(db, userId));
   if (d.mode === 'confirm') {
     const [row] = await db
       .insert(agentActions)
@@ -113,12 +114,13 @@ export async function expirePending(db: Db, userId: string) {
     .set({ status: 'expired', decidedAt: new Date() })
     .where(and(eq(agentActions.userId, userId), eq(agentActions.status, 'pending'), lt(agentActions.expiresAt, sql`now()`)))
     .returning();
+  const currency = expired.length ? await userCurrency(db, userId) : 'UZS';
   for (const a of expired) {
     await audit(db, userId, {
       actor: 'system',
       event: 'action.expire',
       decision: 'info',
-      reason: `${describe(a.type, a.payload)} expired after 15 minutes without approval.`,
+      reason: `${describe(a.type, a.payload, currency)} expired after 15 minutes without approval.`,
       details: { actionId: a.id },
     });
   }
@@ -161,7 +163,7 @@ export async function approveAction(db: Db, userId: string, id: string): Promise
     actor: 'user',
     event: 'action.approve',
     decision: 'allowed',
-    reason: `Approved: ${describe(row.type, row.payload)}.`,
+    reason: `Approved: ${describe(row.type, row.payload, await userCurrency(db, userId))}.`,
     details: { actionId: row.id },
   });
   return toAction(row);
@@ -180,7 +182,7 @@ export async function rejectAction(db: Db, userId: string, id: string): Promise<
     actor: 'user',
     event: 'action.reject',
     decision: 'info',
-    reason: `Rejected: ${describe(a.type, a.payload)}. Nothing was changed.`,
+    reason: `Rejected: ${describe(a.type, a.payload, await userCurrency(db, userId))}. Nothing was changed.`,
     details: { actionId: a.id },
   });
   return toAction(row!);

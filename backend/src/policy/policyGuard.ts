@@ -4,10 +4,11 @@ import { CATEGORIES, type Category, type PermissionLevel, type Permissions, type
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
+import { userCurrency } from '../bank/currency';
 import { accountOfType, agentTransferredToday } from '../bank/mockBank';
 import type { Db } from '../db/client';
 import { permissions } from '../db/schema';
-import { fmt, maskCards } from '../lib/format';
+import { maskCards, money as formatMoney } from '../lib/format';
 import { toPermissions } from '../lib/serialize';
 import { LEVEL_RANK } from './limits';
 
@@ -107,6 +108,8 @@ export async function checkPolicy<T extends ToolName>(db: Db, userId: string, to
     const target = t.toAccountId && t.toAccountId !== savings?.id ? `${maskCards(t.toAccountId)} is not your savings account. ` : '';
     return block('TARGET_NOT_ALLOWED', `${target}Money can only move from your card to your own savings.`);
   }
+  const currency = await userCurrency(db, userId);
+  const fmt = (n: number) => formatMoney(n, currency);
   // 6. Per-action limit
   if (t.amount > perms.perActionLimit)
     return block('PER_ACTION_LIMIT', `${fmt(t.amount)} is over your ${fmt(perms.perActionLimit)} per-action limit.`);

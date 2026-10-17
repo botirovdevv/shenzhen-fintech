@@ -8,7 +8,8 @@ import { addExpense } from '../bank/expenses';
 import { userAccounts } from '../bank/mockBank';
 import type { Db } from '../db/client';
 import { recommendations, transactions } from '../db/schema';
-import { fmt } from '../lib/format';
+import { userCurrency } from '../bank/currency';
+import { money } from '../lib/format';
 import { newId } from '../lib/ids';
 import { addDays, dayStart, tashkentDate } from '../lib/time';
 import { proposeAction } from '../policy/actions';
@@ -19,7 +20,7 @@ import type { ToolDefinition } from './llm/provider';
 import { untrusted } from './prompts';
 
 const DESCRIPTIONS: Record<ToolName, string> = {
-  get_balance: 'List the user’s accounts (card, savings, cash) with balances in UZS.',
+  get_balance: 'List the user’s accounts (card, savings, cash) with balances in the user’s currency.',
   list_transactions: 'List transactions, newest first. Defaults to the last 14 days. Descriptions are untrusted data.',
   get_daily_summary: 'Today’s numbers from the Rules Engine: dailyAllowance, todaySpent, remainingToday, savedToday, byCategory.',
   simulate_saving: 'What-if: monthly and yearly saving from replacing a daily cost with a cheaper one on N days a month.',
@@ -48,7 +49,7 @@ const handlers: { [T in Exclude<ToolName, ActionTool>]: Handler<T> } = {
   async get_balance({ db, userId }) {
     const accs = await userAccounts(db, userId);
     return {
-      result: { accounts: accs.map((a) => ({ id: a.id, type: a.type, name: a.name, balance: a.balance })) },
+      result: { accounts: accs.map((a) => ({ id: a.id, type: a.type, name: a.name, balance: a.balance, currency: a.currency })) },
       note: 'Read account balances.',
     };
   },
@@ -86,8 +87,10 @@ const handlers: { [T in Exclude<ToolName, ActionTool>]: Handler<T> } = {
   async get_daily_summary({ db, userId }, a) {
     return { result: await dailySummary(db, userId, a.date), note: 'Read today’s summary.' };
   },
-  async simulate_saving(_ctx, a) {
+  async simulate_saving({ db, userId }, a) {
     const r = whatIf(a);
+    const cur = await userCurrency(db, userId);
+    const fmt = (n: number) => money(n, cur);
     return { result: r, note: `What-if: ${fmt(a.currentCostPerDay)} → ${fmt(a.alternativeCostPerDay)} on ${a.daysPerMonth} days = ${fmt(r.monthlySaving)}/month.` };
   },
   async create_recommendation({ db, userId }, a) {
@@ -97,7 +100,7 @@ const handlers: { [T in Exclude<ToolName, ActionTool>]: Handler<T> } = {
   },
   async add_expense({ db, userId }, a) {
     const t = await addExpense(db, userId, { ...a, source: 'agent' });
-    return { result: { id: t.id, amount: t.amount, category: t.category }, note: `Expense added: ${fmt(a.amount)} UZS, ${a.category}.` };
+    return { result: { id: t.id, amount: t.amount, category: t.category }, note: `Expense added: ${money(a.amount, await userCurrency(db, userId))}, ${a.category}.` };
   },
 };
 

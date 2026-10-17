@@ -14,6 +14,8 @@ export const toUser = (u: Row<typeof s.users>): User => ({
   fixedCostsMonthly: u.fixedCostsMonthly,
   reportTime: u.reportTime,
   telegramLinked: u.telegramChatId !== null,
+  currency: u.currency,
+  voiceLanguage: u.voiceLanguage,
 });
 
 export const toAccount = (a: Row<typeof s.accounts>): Account => ({
@@ -33,6 +35,7 @@ export const toTransaction = (t: Row<typeof s.transactions>): Transaction => ({
   description: t.description,
   source: t.source,
   occurredAt: t.occurredAt.toISOString(),
+  ...(t.originalAmount !== null && t.originalCurrency ? { original: { amount: t.originalAmount, currency: t.originalCurrency } } : {}),
 });
 
 export const toAction = (a: Row<typeof s.agentActions>): AgentAction => ({

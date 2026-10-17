@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { audit } from '../audit/audit';
+import { userCurrency } from '../bank/currency';
 import { openSandboxAccounts, userAccounts } from '../bank/mockBank';
 import { permissions } from '../db/schema';
 import { toAccount } from '../lib/serialize';
@@ -24,7 +25,7 @@ export async function bankRoutes(app: FastifyInstance) {
     let accs = await userAccounts(db, req.userId);
     const fresh = accs.length === 0;
     if (fresh) accs = await openSandboxAccounts(db, req.userId);
-    const limits = clampLimits(b.level, {});
+    const limits = clampLimits(b.level, await userCurrency(db, req.userId), {});
     await db
       .insert(permissions)
       .values({ userId: req.userId, level: b.level, scopes, ...limits, agentEnabled: true })

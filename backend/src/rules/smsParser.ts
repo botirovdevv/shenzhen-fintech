@@ -1,9 +1,13 @@
 // Bank SMS parser (PLAN.md §9): Uzcard / Humo style notifications forwarded to the bot.
 // Regex only; the merchant goes to the categorizer afterwards. Null means "not a bank SMS".
+import type { Currency } from '@femate/shared';
+
 import { tashkentTime } from '../lib/time';
 
 export interface ParsedSms {
+  /** Whole units of `currency`, cents kept ("12.50 USD" -> 12.5). */
   amount: number;
+  currency: Currency;
   direction: 'out' | 'in';
   merchant: string;
   /** "*4471", or null when the SMS has no card number. */
@@ -12,8 +16,9 @@ export interface ParsedSms {
   occurredAt: Date | null;
 }
 
-const CURRENCY = String.raw`(?:uzs|so'?m|sum|сум)`;
-const AMOUNT_RE = new RegExp(String.raw`(\d[\d\s,]*(?:\.\d{1,2})?)\s*${CURRENCY}(?![a-z])`, 'i');
+const CURRENCY = String.raw`(?:uzs|so'?m|sum|сум|usd|eur|rub|cny)`;
+const AMOUNT_RE = new RegExp(String.raw`(\d[\d\s,]*(?:\.\d{1,2})?)\s*(${CURRENCY})(?![a-z])`, 'i');
+const SMS_CURRENCY: Record<string, Currency> = { usd: 'USD', eur: 'EUR', rub: 'RUB', cny: 'CNY' };
 const BALANCE_RE = /balans|balance|dostupno|ostatok|qoldiq|доступно|остаток|баланс/i;
 const CARD_RE = /\*+\s?(\d{4})\b|\b\d{4}\s?\*{2,}[\s*]*(\d{4})\b/;
 const CARD_WORD_RE = /karta|card|карта|humo|uzcard/i;
@@ -25,10 +30,12 @@ const NOT_MERCHANT_RE = new RegExp(
   'i',
 );
 
-/** "45 000.00" / "30 000,00" / "1,250,000.00" / "25000.00" -> whole UZS. */
+/** "45 000.00" / "30 000,00" / "1,250,000.00" / "12.50" -> 45000 / 30000 / 1250000 / 12.5. */
 function toSum(raw: string): number {
-  const s = raw.replace(/\s/g, '').replace(/[.,]\d{1,2}$/, '');
-  return parseInt(s.replace(/[.,]/g, ''), 10);
+  const s = raw.replace(/\s/g, '');
+  const cents = s.match(/[.,](\d{1,2})$/);
+  const whole = parseInt((cents ? s.slice(0, -cents[0].length) : s).replace(/[.,]/g, ''), 10);
+  return cents ? whole + Number(cents[1]!.padEnd(2, '0')) / 100 : whole;
 }
 
 export function parseSms(text: string): ParsedSms | null {
@@ -71,6 +78,7 @@ export function parseSms(text: string): ParsedSms | null {
 
   return {
     amount,
+    currency: SMS_CURRENCY[m[2]!.toLowerCase()] ?? 'UZS',
     direction: INCOME_RE.test(s) ? 'in' : 'out',
     merchant,
     cardMask: card ? `*${card[1] ?? card[2]}` : null,

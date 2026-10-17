@@ -1,16 +1,16 @@
 // Telegram bot logic without Telegram (PLAN.md Stage 7), so tests can drive it on PGlite.
 // The bot reads and adds expenses. Money moves only through an inline Approve button on an
 // agent action that Policy Guard already let through (PLAN.md §8), never from a typed command.
-import type { AgentAction } from '@femate/shared';
+import { formatMoney, toMinor, type AgentAction, type Currency } from '@femate/shared';
 import { and, eq, gt } from 'drizzle-orm';
 
 import type { LlmProvider } from '../agent/llm/provider';
 import { audit } from '../audit/audit';
-import { addExpense } from '../bank/expenses';
+import { userCurrency } from '../bank/currency';
+import { addExpense, parsedExpense, spentText } from '../bank/expenses';
 import type { Db } from '../db/client';
 import { agentActions, permissions, telegramLinkCodes, users } from '../db/schema';
 import { ApiError } from '../lib/errors';
-import { fmt } from '../lib/format';
 import { toAction } from '../lib/serialize';
 import { approveAction, expirePending, proposeAction, rejectAction } from '../policy/actions';
 import { dailySummary } from '../rules/dailyAllowance';
@@ -18,8 +18,8 @@ import { parseSms } from '../rules/smsParser';
 
 export const HELP = [
   'Send me what you spent and I’ll add it to FeMate:',
-  '• taxi 20000  •  osh 35 ming  •  kofe 18k',
-  '• Send a voice note: “taksi yigirma ming”.',
+  '• taxi 20000  •  osh 35 ming  •  kofe 18k  •  coffee $4.50',
+  '• Send a voice note: “taksi yigirma ming” or “lunch twelve dollars”.',
   '• Forward a bank SMS (Uzcard / Humo) and I’ll read it.',
   '',
   '/today: today’s report',
@@ -64,18 +64,25 @@ export async function unlinkChat(db: Db, userId: string): Promise<string> {
 
 /** A typed expense ("taxi 20000") or a forwarded bank SMS. Text from Telegram is untrusted: it is only parsed, never obeyed. */
 export async function handleText(db: Db, llm: LlmProvider, userId: string, text: string): Promise<string> {
+  const own = await userCurrency(db, userId);
   const sms = parseSms(text);
   if (sms) {
-    if (sms.direction === 'in') return `That’s money coming in (+${fmt(sms.amount)} UZS), so I didn’t add it as spending.`;
+    const amount = toMinor(sms.amount, sms.currency);
+    if (sms.direction === 'in') return `That’s money coming in (+${formatMoney(amount, sms.currency)}), so I didn’t add it as spending.`;
     const { category } = await llm.categorize(sms.merchant || text);
     const description = sms.merchant ? titleCase(sms.merchant) : 'Card payment';
-    await addExpense(db, userId, { amount: sms.amount, category, description, source: 'sms_forward', occurredAt: sms.occurredAt ?? undefined }, 'card');
-    return `✅ From the SMS: ${description}, ${fmt(sms.amount)} UZS (${category}).\n${await leftToday(db, userId)}`;
+    const t = await addExpense(
+      db,
+      userId,
+      { amount, currency: sms.currency, category, description, source: 'sms_forward', occurredAt: sms.occurredAt ?? undefined },
+      'card',
+    );
+    return `✅ From the SMS: ${description}, ${spentText(t, own)} (${category}).\n${await leftToday(db, userId, own)}`;
   }
   const c = await llm.categorize(text);
   if (!c.amount || c.amount <= 0) return 'I couldn’t find an amount. Try “taxi 20000” or “osh 35 ming”.';
-  await addExpense(db, userId, { amount: c.amount, category: c.category, description: c.description, source: 'manual' });
-  return `✅ Added: ${c.description}, ${fmt(c.amount)} UZS (${c.category}).\n${await leftToday(db, userId)}`;
+  const t = await addExpense(db, userId, { ...(await parsedExpense(db, userId, { ...c, amount: c.amount })), source: 'manual' });
+  return `✅ Added: ${c.description}, ${spentText(t, own)} (${c.category}).\n${await leftToday(db, userId, own)}`;
 }
 
 /** A voice note, already turned into text. Same rules as a typed expense, saved with source voice. */
@@ -84,15 +91,17 @@ export async function handleVoice(db: Db, llm: LlmProvider, userId: string, tran
   const heard = `🎤 “${transcript.slice(0, 200)}”`;
   const c = await llm.categorize(transcript);
   if (!c.amount || c.amount <= 0) return `${heard}\nI couldn’t find an amount. Try “taxi 20 ming” or type it.`;
-  await addExpense(db, userId, { amount: c.amount, category: c.category, description: c.description, source: 'voice' });
-  return `${heard}\n✅ Added: ${c.description}, ${fmt(c.amount)} UZS (${c.category}).\n${await leftToday(db, userId)}`;
+  const own = await userCurrency(db, userId);
+  const t = await addExpense(db, userId, { ...(await parsedExpense(db, userId, { ...c, amount: c.amount })), source: 'voice' });
+  return `${heard}\n✅ Added: ${c.description}, ${spentText(t, own)} (${c.category}).\n${await leftToday(db, userId, own)}`;
 }
 
-async function leftToday(db: Db, userId: string) {
+async function leftToday(db: Db, userId: string, cur: Currency) {
   const s = await dailySummary(db, userId);
+  const fmt = (n: number) => formatMoney(n, cur);
   return s.remainingToday >= 0
-    ? `Left for today: ${fmt(s.remainingToday)} UZS of ${fmt(s.dailyAllowance)}.`
-    : `You’re ${fmt(-s.remainingToday)} UZS over today’s ${fmt(s.dailyAllowance)}.`;
+    ? `Left for today: ${fmt(s.remainingToday)} of ${fmt(s.dailyAllowance)}.`
+    : `You’re ${fmt(-s.remainingToday)} over today’s ${fmt(s.dailyAllowance)}.`;
 }
 
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase());
@@ -101,6 +110,7 @@ export interface Report {
   text: string;
   /** Pending actions to show with Approve / Reject buttons. */
   pending: AgentAction[];
+  currency: Currency;
 }
 
 /**
@@ -109,12 +119,14 @@ export interface Report {
  */
 export async function dailyReport(db: Db, userId: string, opts: { propose?: boolean } = {}): Promise<Report> {
   const s = await dailySummary(db, userId);
+  const cur = await userCurrency(db, userId);
+  const fmt = (n: number) => formatMoney(n, cur);
   const lines = [
     `📊 FeMate report for ${s.date}`,
     '',
-    `Spent today: ${fmt(s.todaySpent)} UZS`,
-    `Daily allowance: ${fmt(s.dailyAllowance)} UZS`,
-    s.remainingToday >= 0 ? `Left: ${fmt(s.remainingToday)} UZS` : `Over by: ${fmt(-s.remainingToday)} UZS`,
+    `Spent today: ${fmt(s.todaySpent)}`,
+    `Daily allowance: ${fmt(s.dailyAllowance)}`,
+    s.remainingToday >= 0 ? `Left: ${fmt(s.remainingToday)}` : `Over by: ${fmt(-s.remainingToday)}`,
   ];
   if (s.byCategory.length) {
     lines.push('', ...s.byCategory.slice(0, 5).map((c) => `• ${c.category}: ${fmt(c.amount)}`));
@@ -127,7 +139,7 @@ export async function dailyReport(db: Db, userId: string, opts: { propose?: bool
         actor: 'agent',
         reason: `Unspent daily allowance on ${s.date}`,
       });
-      lines.push('', r.action.status === 'blocked' ? `I wanted to save ${fmt(s.savedToday)} UZS, but: ${r.message}` : `💰 ${r.message}`);
+      lines.push('', r.action.status === 'blocked' ? `I wanted to save ${fmt(s.savedToday)}, but: ${r.message}` : `💰 ${r.message}`);
     }
   }
 
@@ -137,12 +149,12 @@ export async function dailyReport(db: Db, userId: string, opts: { propose?: bool
     .from(agentActions)
     .where(and(eq(agentActions.userId, userId), eq(agentActions.status, 'pending')));
   if (!pending.length) lines.push('', s.remainingToday >= 0 ? 'Nice work today 👏' : 'Tomorrow is a new day. You’ve got this.');
-  return { text: lines.join('\n'), pending: pending.map(toAction) };
+  return { text: lines.join('\n'), pending: pending.map(toAction), currency: cur };
 }
 
-export function describeAction(a: AgentAction): string {
+export function describeAction(a: AgentAction, cur: Currency): string {
   return a.type === 'transfer_to_savings'
-    ? `Move ${fmt(a.amount ?? 0)} UZS from Card to Savings?\nReason: ${a.reason}`
+    ? `Move ${formatMoney(a.amount ?? 0, cur)} from Card to Savings?\nReason: ${a.reason}`
     : `Set a budget? ${a.reason}`;
 }
 
@@ -151,7 +163,9 @@ export async function decideAction(db: Db, userId: string, id: string, decision:
   try {
     const a = await (decision === 'approve' ? approveAction : rejectAction)(db, userId, id);
     if (a.status !== 'executed') return '❌ Rejected. Nothing was changed.';
-    return a.type === 'transfer_to_savings' ? `✅ Done: ${fmt(a.amount ?? 0)} UZS moved to Savings.` : '✅ Done: budget set.';
+    return a.type === 'transfer_to_savings'
+      ? `✅ Done: ${formatMoney(a.amount ?? 0, await userCurrency(db, userId))} moved to Savings.`
+      : '✅ Done: budget set.';
   } catch (e) {
     if (e instanceof ApiError) return `⚠️ ${e.message}`;
     throw e;

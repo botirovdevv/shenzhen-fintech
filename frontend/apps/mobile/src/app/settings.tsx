@@ -1,5 +1,6 @@
+import { CURRENCIES, CURRENCY_INFO, VOICE_LANGUAGES, type Currency, type VoiceLanguage } from '@femate/shared';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Linking, Modal, Pressable, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +9,7 @@ import { LogoMark } from '@/components/Logo';
 import { Screen } from '@/components/Screen';
 import { Button, Chip, haptic, IconTile, ListRow, PressableScale, SectionLabel, Text } from '@/components/ui';
 import { api, usingMock } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
 import { formatAmount } from '@/lib/format';
 import { disableNotifications, enableNotifications, scheduleDailyReport } from '@/lib/notifications';
 import { queryClient, useDailySummary, useMe, usePermissions, useUpdateMe } from '@/lib/queries';
@@ -19,6 +21,11 @@ const BOT_URL = 'https://t.me/femate_uz_bot';
 
 const REPORT_TIMES = ['18:00', '19:00', '20:00', '20:30', '21:00', '21:30', '22:00', '23:00'];
 
+const VOICE_LABEL: Record<VoiceLanguage, string> = { auto: 'Auto-detect', uz: 'O‘zbekcha', ru: 'Русский', en: 'English' };
+
+/** "1 USD = 12 100 UZS" at the fixed sandbox rates. */
+const rate = (x: Currency) => `1 ${x} = ${formatAmount(CURRENCY_INFO[x].uzsRate, 'UZS')} UZS`;
+
 const MODES: { id: Appearance; label: string; icon: IconName }[] = [
   { id: 'system', label: 'System', icon: 'monitor' },
   { id: 'light', label: 'Light', icon: 'sun' },
@@ -26,6 +33,7 @@ const MODES: { id: Appearance; label: string; icon: IconName }[] = [
 ];
 
 export default function Settings() {
+  const cur = useCurrency();
   const { c, dark } = useTheme();
   const me = useMe();
   const daily = useDailySummary();
@@ -35,8 +43,7 @@ export default function Settings() {
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
   const updateMe = useUpdateMe();
-  const insets = useSafeAreaInsets();
-  const [pickTime, setPickTime] = useState(false);
+  const [picker, setPicker] = useState<'time' | 'currency' | 'voice' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const u = me.data;
   const reportTime = u?.reportTime ?? '21:00';
@@ -65,9 +72,24 @@ export default function Settings() {
 
   const chooseTime = async (t: string) => {
     haptic('light');
-    setPickTime(false);
+    setPicker(null);
     await updateMe.mutateAsync({ reportTime: t });
     if (pushEnabled) await scheduleDailyReport(t);
+  };
+
+  // Converts every stored amount on the server, so everything that shows money is refetched.
+  const chooseCurrency = async (x: Currency) => {
+    haptic('light');
+    setPicker(null);
+    if (x === cur) return;
+    await updateMe.mutateAsync({ currency: x });
+    await queryClient.invalidateQueries();
+  };
+
+  const chooseVoice = async (v: VoiceLanguage) => {
+    haptic('light');
+    setPicker(null);
+    await updateMe.mutateAsync({ voiceLanguage: v });
   };
 
   const getCode = async () => {
@@ -169,34 +191,49 @@ export default function Settings() {
       </View>
 
       <View>
+        <SectionLabel>Money and voice</SectionLabel>
+        <View style={group}>
+          <ListRow icon="cash" tile="#0E7A4B" title="Currency" value={cur} onPress={() => setPicker('currency')} />
+          <ListRow
+            icon="mic"
+            tile="#AF52DE"
+            title="Voice language"
+            value={VOICE_LABEL[u?.voiceLanguage ?? 'auto']}
+            onPress={() => setPicker('voice')}
+            last
+          />
+        </View>
+      </View>
+
+      <View>
         <SectionLabel>Budget</SectionLabel>
         <View style={group}>
           <ListRow
             icon="wallet"
             tile="#0E7A4B"
             title="Monthly income"
-            value={formatAmount(u?.monthlyIncome ?? 0)}
+            value={formatAmount(u?.monthlyIncome ?? 0, cur)}
             onPress={() => router.push({ pathname: '/onboarding', params: { mode: 'edit' } })}
           />
           <ListRow
             icon="home"
             tile="#FF9500"
             title="Fixed costs"
-            value={formatAmount(u?.fixedCostsMonthly ?? 0)}
+            value={formatAmount(u?.fixedCostsMonthly ?? 0, cur)}
             onPress={() => router.push({ pathname: '/onboarding', params: { mode: 'edit' } })}
           />
           <ListRow
             icon="target"
             tile="#007AFF"
             title="Savings goal"
-            value={formatAmount(u?.savingsGoalMonthly ?? 0)}
+            value={formatAmount(u?.savingsGoalMonthly ?? 0, cur)}
             onPress={() => router.push({ pathname: '/onboarding', params: { mode: 'edit' } })}
           />
           <ListRow
             icon="gauge"
             tile="#30B0C7"
             title="Daily allowance"
-            value={formatAmount(daily.data?.dailyAllowance ?? 0)}
+            value={formatAmount(daily.data?.dailyAllowance ?? 0, cur)}
             valueColor={c.accent}
             last
           />
@@ -206,7 +243,7 @@ export default function Settings() {
       <View>
         <SectionLabel>Notifications</SectionLabel>
         <View style={group}>
-          <ListRow icon="clock" tile="#5856D6" title="Daily report" value={reportTime} onPress={() => setPickTime(true)} />
+          <ListRow icon="clock" tile="#5856D6" title="Daily report" value={reportTime} onPress={() => setPicker('time')} />
           <ListRow
             icon="bell"
             tile="#E5484D"
@@ -229,43 +266,46 @@ export default function Settings() {
         ) : null}
       </View>
 
-      <Modal
-        visible={pickTime}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        navigationBarTranslucent
-        onRequestClose={() => setPickTime(false)}
+      <PickerSheet
+        visible={picker === 'time'}
+        onClose={() => setPicker(null)}
+        title="Daily report time"
+        hint="FeMate sends your report to Telegram and as a notification at this time."
       >
-        <Pressable
-          accessibilityLabel="Close"
-          onPress={() => setPickTime(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
-        >
-          <Pressable
-            onPress={() => undefined}
-            style={{
-              backgroundColor: c.sheet,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: 20,
-              paddingBottom: insets.bottom + 24,
-              gap: 16,
-            }}
-          >
-            <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.fill2 }} />
-            <Text variant="title2">Daily report time</Text>
-            <Text variant="footnote" color="secondary">
-              FeMate sends your report to Telegram and as a notification at this time.
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {REPORT_TIMES.map((t) => (
-                <Chip key={t} label={t} icon="clock" selected={t === reportTime} onPress={() => void chooseTime(t)} />
-              ))}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {REPORT_TIMES.map((t) => (
+          <Chip key={t} label={t} icon="clock" selected={t === reportTime} onPress={() => void chooseTime(t)} />
+        ))}
+      </PickerSheet>
+
+      <PickerSheet
+        visible={picker === 'currency'}
+        onClose={() => setPicker(null)}
+        title="Currency"
+        hint={`Balances, history, budgets and agent limits are converted at fixed sandbox rates (${CURRENCIES.filter((x) => x !== 'UZS')
+          .map(rate)
+          .join(', ')}). You can still log an expense in any currency, like “coffee $4.50”.`}
+      >
+        {CURRENCIES.map((x) => (
+          <Chip key={x} label={`${x} · ${CURRENCY_INFO[x].name}`} selected={x === cur} onPress={() => void chooseCurrency(x)} />
+        ))}
+      </PickerSheet>
+
+      <PickerSheet
+        visible={picker === 'voice'}
+        onClose={() => setPicker(null)}
+        title="Voice language"
+        hint="What you speak in voice notes, in the app and in Telegram. Auto-detect works for most; pick one if short notes come out wrong."
+      >
+        {VOICE_LANGUAGES.map((v) => (
+          <Chip
+            key={v}
+            label={VOICE_LABEL[v]}
+            icon="mic"
+            selected={v === (u?.voiceLanguage ?? 'auto')}
+            onPress={() => void chooseVoice(v)}
+          />
+        ))}
+      </PickerSheet>
 
       <View>
         <SectionLabel>Telegram bot</SectionLabel>
@@ -349,5 +389,50 @@ export default function Settings() {
         </Text>
       </View>
     </Screen>
+  );
+}
+
+function PickerSheet({
+  visible,
+  onClose,
+  title,
+  hint,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  hint: string;
+  children: ReactNode;
+}) {
+  const { c } = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <Pressable
+        accessibilityLabel="Close"
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+      >
+        <Pressable
+          onPress={() => undefined}
+          style={{
+            backgroundColor: c.sheet,
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            padding: 20,
+            paddingBottom: insets.bottom + 24,
+            gap: 16,
+          }}
+        >
+          <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: c.fill2 }} />
+          <Text variant="title2">{title}</Text>
+          <Text variant="footnote" color="secondary">
+            {hint}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{children}</View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }

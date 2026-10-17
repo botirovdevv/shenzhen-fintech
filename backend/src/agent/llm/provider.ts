@@ -1,5 +1,5 @@
 // LLM adapter interface (PLAN.md §10). The LLM only proposes; Policy Guard decides.
-import type { Category } from '@femate/shared';
+import type { Category, Currency } from '@femate/shared';
 
 export interface ToolCall {
   id: string;
@@ -20,6 +20,8 @@ export interface ToolDefinition {
 }
 
 export interface LlmProvider {
-  chat(input: { system: string; messages: LlmMessage[]; tools: ToolDefinition[] }): Promise<{ text?: string; toolCalls?: ToolCall[] }>;
-  categorize(text: string): Promise<{ amount: number | null; category: Category; description: string }>;
+  /** `currency` is the user's: tool amounts are integers in its minor units (so'm, cents). */
+  chat(input: { system: string; messages: LlmMessage[]; tools: ToolDefinition[]; currency: Currency }): Promise<{ text?: string; toolCalls?: ToolCall[] }>;
+  /** `amount` is in whole units of `currency`; currency null means the text named none (use the user's). */
+  categorize(text: string): Promise<{ amount: number | null; currency: Currency | null; category: Category; description: string }>;
 }

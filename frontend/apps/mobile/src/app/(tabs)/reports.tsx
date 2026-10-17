@@ -7,7 +7,10 @@ import { Icon, type IconName } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { Button, Card, ErrorRow, haptic, IconTile, Segmented, Text } from '@/components/ui';
 import { categoryIcon } from '@/lib/categories';
-import { categoryLabel, formatAmount, shortAmount } from '@/lib/format';
+import { fromUzs, niceStep } from '@femate/shared';
+
+import { useCurrency } from '@/lib/currency';
+import { categoryLabel, formatAmount, formatMoney, shortAmount } from '@/lib/format';
 import { useDailySummary, usePeriodSummary, useSimulate } from '@/lib/queries';
 import { useTheme } from '@/theme';
 
@@ -84,16 +87,20 @@ function WhatIfRow({
 }
 
 export default function Reports() {
+  const cur = useCurrency();
   const { c } = useTheme();
   const [period, setPeriod] = useState<Period>('week');
   const [selected, setSelected] = useState<number | null>(null);
-  const [cur, setCur] = useState(20_000);
+  // Sliders move in so'm and show the user's currency, rounded to a readable step.
+  const [taxi, setTaxi] = useState(20_000);
   const [alt, setAlt] = useState(4_000);
+  const unit = niceStep(fromUzs(1000, cur));
+  const inCur = (uzs: number) => Math.round(fromUzs(uzs, cur) / unit) * unit;
   const [days, setDays] = useState(15);
   const { from, to } = useMemo(() => ranges(period), [period]);
   const summary = usePeriodSummary(from, to);
   const daily = useDailySummary();
-  const allowance = daily.data?.dailyAllowance ?? 93_548;
+  const allowance = daily.data?.dailyAllowance ?? 0;
 
   const today = new Date();
   const bars = useMemo(() => {
@@ -129,10 +136,10 @@ export default function Reports() {
   const sel = selected ?? (todayIdx >= 0 ? todayIdx : 0);
   // Rules Engine owns the math (PLAN.md §9); the local value only fills in until the server answers.
   // Sliders update the local estimate live; the server (Rules Engine) is asked once the finger lifts.
-  const [asked, setAsked] = useState({ cur: 20_000, alt: 4_000, days: 15 });
-  const sim = useSimulate(asked.cur, asked.alt, asked.days);
-  const settled = asked.cur === cur && asked.alt === alt && asked.days === days;
-  const monthly = settled && sim.data ? sim.data.monthlySaving : Math.max(0, cur - alt) * days;
+  const [asked, setAsked] = useState({ taxi: 20_000, alt: 4_000, days: 15 });
+  const sim = useSimulate(inCur(asked.taxi), inCur(asked.alt), asked.days);
+  const settled = asked.taxi === taxi && asked.alt === alt && asked.days === days;
+  const monthly = settled && sim.data ? sim.data.monthlySaving : Math.max(0, inCur(taxi) - inCur(alt)) * days;
   const yearly = settled && sim.data ? sim.data.yearlySaving : monthly * 12;
   const top = summary.data?.byCategory.slice(0, 4) ?? [];
 
@@ -159,9 +166,9 @@ export default function Reports() {
             </Text>
           </View>
           <Text variant="title" tabular style={{ fontSize: 28 }}>
-            {formatAmount(total)}{' '}
+            {formatAmount(total, cur)}{' '}
             <Text variant="callout" color="secondary" weight="600">
-              UZS
+              {cur}
             </Text>
           </Text>
           <Text variant="footnote" color="secondary">
@@ -202,7 +209,7 @@ export default function Reports() {
                 <Pressable
                   key={b.label}
                   accessibilityRole="button"
-                  accessibilityLabel={`${b.label}: ${b.amount ? `${formatAmount(b.amount)} UZS` : b.future ? 'not yet' : 'no spending'}`}
+                  accessibilityLabel={`${b.label}: ${b.amount ? `${formatMoney(b.amount, cur)}` : b.future ? 'not yet' : 'no spending'}`}
                   accessibilityState={{ selected: on }}
                   onPress={() => {
                     haptic('light');
@@ -212,7 +219,7 @@ export default function Reports() {
                 >
                   {on ? (
                     <Text variant="caption" weight="700" tabular style={{ textAlign: 'center', fontSize: 11 }}>
-                      {b.amount ? shortAmount(b.amount) : '—'}
+                      {b.amount ? shortAmount(b.amount, cur) : '—'}
                     </Text>
                   ) : null}
                   <View
@@ -249,7 +256,7 @@ export default function Reports() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 14, borderTopWidth: 1.5, borderStyle: 'dashed', borderColor: c.accent }} />
             <Text variant="caption" color="secondary" tabular>
-              {period === 'week' ? 'Daily' : 'Weekly'} limit {formatAmount(limit)}
+              {period === 'week' ? 'Daily' : 'Weekly'} limit {formatAmount(limit, cur)}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -279,7 +286,7 @@ export default function Reports() {
                 {categoryLabel[t.category]}
               </Text>
               <Text variant="callout" color="secondary" tabular>
-                {formatAmount(t.amount)}
+                {formatAmount(t.amount, cur)}
               </Text>
             </View>
           ))}
@@ -299,18 +306,18 @@ export default function Reports() {
         <WhatIfRow
           icon="transport"
           label="Taxi per day"
-          display={`${formatAmount(cur)} UZS`}
-          value={cur}
+          display={formatMoney(inCur(taxi), cur)}
+          value={taxi}
           min={5_000}
           max={60_000}
           step={1_000}
-          onChange={setCur}
-          onDone={(v) => setAsked((a) => ({ ...a, cur: v }))}
+          onChange={setTaxi}
+          onDone={(v) => setAsked((a) => ({ ...a, taxi: v }))}
         />
         <WhatIfRow
           icon="bus"
           label="Bus instead, per day"
-          display={`${formatAmount(alt)} UZS`}
+          display={formatMoney(inCur(alt), cur)}
           value={alt}
           min={0}
           max={20_000}
@@ -335,7 +342,7 @@ export default function Reports() {
               Per month
             </Text>
             <Text variant="title2" color="accentInk" tabular style={{ fontSize: 22 }} numberOfLines={1} adjustsFontSizeToFit>
-              {formatAmount(monthly)}
+              {formatAmount(monthly, cur)}
             </Text>
           </View>
           <View style={{ flex: 1, backgroundColor: c.fill, borderRadius: 16, padding: 14, gap: 2 }}>
@@ -343,7 +350,7 @@ export default function Reports() {
               Per year
             </Text>
             <Text variant="title2" tabular style={{ fontSize: 22 }} numberOfLines={1} adjustsFontSizeToFit>
-              {formatAmount(yearly)}
+              {formatAmount(yearly, cur)}
             </Text>
           </View>
         </View>

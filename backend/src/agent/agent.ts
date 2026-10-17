@@ -27,14 +27,14 @@ export async function chat(db: Db, llm: LlmProvider, userId: string, message: st
     .limit(HISTORY);
   const messages: LlmMessage[] = history.reverse().map((m) => ({ role: m.role, content: m.content }));
   const today = await dailySummary(db, userId).catch(() => null);
-  const system = systemPrompt(user.name, today);
+  const system = systemPrompt(user.name, user.currency, today);
 
   const ctx: ToolContext = { db, userId, actions: [] };
   let calls = 0;
   let reply = '';
   // Bounded: every iteration either ends the turn or spends at least one of the 5 tool calls.
   for (;;) {
-    const res = await llm.chat({ system, messages, tools: calls < MAX_TOOL_CALLS ? toolDefinitions : [] });
+    const res = await llm.chat({ system, messages, tools: calls < MAX_TOOL_CALLS ? toolDefinitions : [], currency: user.currency });
     const wanted = calls < MAX_TOOL_CALLS ? (res.toolCalls ?? []).slice(0, MAX_TOOL_CALLS - calls) : [];
     if (wanted.length === 0) {
       reply = res.text?.trim() || (calls >= MAX_TOOL_CALLS ? 'I reached my limit of 5 steps for one message. Try a simpler request.' : 'Sorry, I don’t have an answer for that.');

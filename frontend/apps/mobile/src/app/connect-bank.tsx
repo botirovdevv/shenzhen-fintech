@@ -1,4 +1,4 @@
-import { LEVEL_LIMITS, type PermissionLevel, type Scope } from '@femate/shared';
+import { levelLimits, type PermissionLevel, type Scope } from '@femate/shared';
 import { BlurView } from 'expo-blur';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -9,6 +9,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { LogoMark } from '@/components/Logo';
 import { Button, haptic, IconTile, PressableScale, SectionLabel, Text } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
 import { formatAmount } from '@/lib/format';
 import { queryClient, usePermissions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
@@ -27,6 +28,7 @@ const LEVELS: { id: PermissionLevel; name: string; desc: string; icon: IconName;
 ];
 
 export default function ConnectBank() {
+  const cur = useCurrency();
   const { c, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const editing = useLocalSearchParams<{ mode?: string }>().mode === 'edit';
@@ -162,7 +164,7 @@ export default function ConnectBank() {
           <View style={{ gap: 8 }}>
             {LEVELS.map((l) => {
               const on = l.id === level;
-              const lim = LEVEL_LIMITS[l.id];
+              const lim = levelLimits(l.id, cur);
               return (
                 <PressableScale
                   key={l.id}
@@ -207,7 +209,7 @@ export default function ConnectBank() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 2 }}>
                         <Icon name="gauge" size={13} color={c.label} strokeWidth={2.2} />
                         <Text variant="caption" weight="600" tabular>
-                          {formatAmount(lim.perAction)} per action · {formatAmount(lim.daily)} per day
+                          {formatAmount(lim.perAction, cur)} per action · {formatAmount(lim.daily, cur)} per day
                         </Text>
                       </View>
                     ) : null}

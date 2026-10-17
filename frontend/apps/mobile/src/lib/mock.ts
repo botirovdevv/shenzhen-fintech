@@ -1,7 +1,10 @@
 // In-memory stand-in for apps/api until the real backend is up (PLAN.md §7, §8, §9, §10).
 // Same shapes as the API contract, so lib/api.ts can switch between the two with one env var.
 import {
-  LEVEL_LIMITS,
+  categorize,
+  convertMoney,
+  levelLimits,
+  toMinor,
   type Account,
   type AgentAction,
   type AuditEntry,
@@ -187,6 +190,8 @@ function seed(): Db {
       savingsGoalMonthly: 500_000,
       reportTime: '21:00',
       telegramLinked: false,
+      currency: 'UZS',
+      voiceLanguage: 'auto',
     },
     accounts: [
       { id: card, type: 'card', name: 'Card ·· 1234', balance: 2_350_000, currency: 'UZS' },
@@ -378,83 +383,14 @@ function proposeTransfer(amount: number, reason: string): AgentAction {
   return pending;
 }
 
-const UZ_NUMBERS: Record<string, number> = {
-  bir: 1,
-  ikki: 2,
-  uch: 3,
-  "to'rt": 4,
-  tort: 4,
-  besh: 5,
-  olti: 6,
-  yetti: 7,
-  sakkiz: 8,
-  "to'qqiz": 9,
-  toqqiz: 9,
-  "o'n": 10,
-  yigirma: 20,
-  "o'ttiz": 30,
-  ottiz: 30,
-  qirq: 40,
-  ellik: 50,
-  oltmish: 60,
-  yetmish: 70,
-  sakson: 80,
-  "to'qson": 90,
-  toqson: 90,
-};
+// Same categorizer as the server (@femate/shared). Re-exported for the app's live preview and tests.
+export { categorize, parseUzbekNumber } from '@femate/shared';
 
-// "qirq besh ming" -> 45000, "bir yuz yigirma ming" -> 120000. Null when the text has no number words.
-export function parseUzbekNumber(text: string): number | null {
-  const words = text
-    .toLowerCase()
-    .replace(/[‘’ʻʼ`]/g, "'")
-    .split(/[^a-z']+/);
-  let total = 0;
-  let group = 0;
-  let seen = false;
-  for (const w of words) {
-    if (w === 'ming') {
-      total += (group || 1) * 1000;
-      group = 0;
-      seen = true;
-    } else if (w === 'yuz') {
-      group = (group || 1) * 100;
-      seen = true;
-    } else if (UZ_NUMBERS[w] !== undefined) {
-      group += UZ_NUMBERS[w];
-      seen = true;
-    }
-  }
-  return seen ? total + group : null;
-}
-
-// Mock LLM categorizer (PLAN.md §10): keywords plus "20 ming" / "20k" / "20000" / "qirq besh ming" amounts.
-export function categorize(text: string): { amount: number | null; category: Category; description: string } {
-  const s = text.toLowerCase();
-  const m = s.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*(k|ming|thousand|th|тыс)?\b/);
-  let amount: number | null = null;
-  if (m?.[1]) {
-    amount = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
-    if (m[2]) amount *= 1000;
-    amount = Math.round(amount);
-  }
-  const rules: [RegExp, Category][] = [
-    [/taxi|taksi|yandex|bus|avtobus|metro|benzin|fuel|uber/, 'transport'],
-    [/ovqat|osh|kafe|cafe|lunch|dinner|breakfast|bozor|bazaar|market|coffee|non\b|bread|food|restaurant|evos/, 'food'],
-    [/svet|gaz|suv|electric|gas|water|internet|kommunal/, 'utilities'],
-    [/shop|uzum|kiyim|clothes|shoes|store|magazin/, 'shopping'],
-    [/dorixona|pharmacy|doctor|apteka|health/, 'health'],
-    [/kino|cinema|game|netflix|concert/, 'entertainment'],
-    [/kurs|course|book|kitob|school|lesson/, 'education'],
-  ];
-  if (amount === null) amount = parseUzbekNumber(text);
-  const category = rules.find(([re]) => re.test(s))?.[1] ?? 'other';
-  const words = text
-    .replace(m?.[0] ?? '', ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const description = words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Expense';
-  return { amount, category, description };
+/** Typed text -> amount in the user's minor units, converted when it names another currency. */
+function textExpense(text: string) {
+  const p = categorize(text);
+  const from = p.currency ?? db.user.currency;
+  return { ...p, amount: p.amount === null ? null : convertMoney(toMinor(p.amount, from), from, db.user.currency) };
 }
 
 function dailySummary(): DailySummary {
@@ -495,13 +431,33 @@ export const mockApi = {
   },
   async updateMe(body: UpdateMeBody): Promise<User> {
     await delay();
-    const { expoPushToken: _ignored, ...rest } = body;
+    const { expoPushToken: _ignored, currency, ...rest } = body;
+    if (currency && currency !== db.user.currency) {
+      // Same idea as the API: every stored amount is re-expressed in the new currency.
+      const from = db.user.currency;
+      const conv = (n: number) => convertMoney(n, from, currency);
+      const u = db.user;
+      db.user = {
+        ...u,
+        currency,
+        monthlyIncome: conv(u.monthlyIncome),
+        fixedCostsMonthly: conv(u.fixedCostsMonthly),
+        savingsGoalMonthly: conv(u.savingsGoalMonthly),
+      };
+      for (const a of db.accounts) Object.assign(a, { balance: conv(a.balance), currency });
+      for (const t of db.transactions) t.amount = conv(t.amount);
+      for (const a of db.actions) if (a.amount !== undefined) a.amount = conv(a.amount);
+      for (const r of db.recommendations) r.monthlySaving = conv(r.monthlySaving);
+      const max = levelLimits(db.permissions.level, currency);
+      db.permissions.perActionLimit = Math.min(conv(db.permissions.perActionLimit), max?.perAction ?? 0);
+      db.permissions.dailyLimit = Math.min(conv(db.permissions.dailyLimit), max?.daily ?? 0);
+    }
     db.user = { ...db.user, ...rest };
     return db.user;
   },
   async connectBank(body: ConnectBankBody): Promise<{ accounts: Account[] }> {
     await delay(600);
-    const max = LEVEL_LIMITS[body.level];
+    const max = levelLimits(body.level, db.user.currency);
     db.permissions = {
       level: body.level,
       scopes: body.scopes,
@@ -527,7 +483,14 @@ export const mockApi = {
   },
   async createTransaction(body: CreateTransactionBody): Promise<Transaction> {
     await delay(400);
-    const parsed = 'text' in body ? categorize(body.text) : { amount: body.amount, category: body.category, description: body.description };
+    const parsed =
+      'text' in body
+        ? textExpense(body.text)
+        : {
+            amount: convertMoney(body.amount, body.currency ?? db.user.currency, db.user.currency),
+            category: body.category,
+            description: body.description,
+          };
     if (!parsed.amount || parsed.amount <= 0) throw new ApiError('INVALID_ARGS', 'Add an amount, for example “taxi 20k”.');
     const cash = account('cash');
     const tx: Transaction = {
@@ -686,7 +649,7 @@ export const mockApi = {
   async updatePermissions(body: UpdatePermissionsBody): Promise<Permissions> {
     await delay(300);
     const level = body.level ?? db.permissions.level;
-    const max = LEVEL_LIMITS[level];
+    const max = levelLimits(level, db.user.currency);
     const cap = (v: number | undefined, fallback: number, limit?: number) => Math.min(v ?? fallback, limit ?? 0);
     db.permissions = {
       level,

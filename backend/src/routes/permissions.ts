@@ -5,7 +5,8 @@ import { z } from 'zod';
 
 import { audit } from '../audit/audit';
 import { agentActions, permissions } from '../db/schema';
-import { fmt } from '../lib/format';
+import { userCurrency } from '../bank/currency';
+import { money } from '../lib/format';
 import { toPermissions } from '../lib/serialize';
 import { parse } from '../lib/validate';
 import { clampLimits } from '../policy/limits';
@@ -30,7 +31,8 @@ export async function permissionRoutes(app: FastifyInstance) {
     const cur = await loadPermissions(db, req.userId);
     const level = b.level ?? cur.level;
     // Limits carry over only within the same level; a new level starts from its system maximum.
-    const limits = clampLimits(level, b, level === cur.level ? cur : undefined);
+    const currency = await userCurrency(db, req.userId);
+    const limits = clampLimits(level, currency, b, level === cur.level ? cur : undefined);
     const scopes = b.scopes ? [...new Set(b.scopes)] : cur.scopes;
     const [row] = await db
       .insert(permissions)
@@ -43,7 +45,7 @@ export async function permissionRoutes(app: FastifyInstance) {
       actor: 'user',
       event: 'permissions.update',
       decision: 'info',
-      reason: `${cur.agentEnabled ? 'Permissions updated' : 'Agent re-enabled'}: ${level}, ${fmt(p.perActionLimit)} per action, ${fmt(p.dailyLimit)} a day${capped ? ' (capped at the system maximum)' : ''}.`,
+      reason: `${cur.agentEnabled ? 'Permissions updated' : 'Agent re-enabled'}: ${level}, ${money(p.perActionLimit, currency)} per action, ${money(p.dailyLimit, currency)} a day${capped ? ' (capped at the system maximum)' : ''}.`,
       details: { before: cur, after: p },
       level,
     });

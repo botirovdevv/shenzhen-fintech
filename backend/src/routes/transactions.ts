@@ -1,11 +1,11 @@
 import multipart from '@fastify/multipart';
-import { CATEGORIES, type Category, type Page, type Transaction } from '@femate/shared';
+import { CATEGORIES, CURRENCIES, type Category, type Currency, type Page, type Transaction } from '@femate/shared';
 import { and, desc, eq, gte, lt, lte, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { addExpense } from '../bank/expenses';
-import { transactions } from '../db/schema';
+import { addExpense, parsedExpense } from '../bank/expenses';
+import { transactions, users } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { decodeCursor, encodeCursor } from '../lib/paginate';
 import { toTransaction } from '../lib/serialize';
@@ -22,7 +22,12 @@ const listQuery = z.object({
 });
 const createBody = z.union([
   z.object({ text: z.string().trim().min(1, 'Type what you spent, e.g. “taxi 20k”.').max(300) }),
-  z.object({ amount: z.number().int().positive(), category, description: z.string().trim().min(1).max(200) }),
+  z.object({
+    amount: z.number().int().positive(),
+    category,
+    description: z.string().trim().min(1).max(200),
+    currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
+  }),
 ]);
 
 export async function transactionRoutes(app: FastifyInstance) {
@@ -52,12 +57,12 @@ export async function transactionRoutes(app: FastifyInstance) {
 
   app.post('/transactions', async (req, reply): Promise<Transaction> => {
     const b = parse(createBody, req.body);
-    let e: { amount: number; category: Category; description: string };
+    let e: { amount: number; currency?: Currency | null; category: Category; description: string };
     if ('text' in b) {
-      // Free text ("taxi 20 ming") is categorized by the LLM adapter; the amount must be found.
+      // Free text ("taxi 20 ming", "coffee $4.50") is categorized by the LLM adapter; the amount must be found.
       const c = await llm.categorize(b.text);
       if (!c.amount || c.amount <= 0) throw new ApiError(400, 'INVALID_ARGS', 'Add an amount, for example “taxi 20k”.');
-      e = { amount: c.amount, category: c.category, description: c.description };
+      e = await parsedExpense(db, req.userId, { ...c, amount: c.amount });
     } else {
       e = b;
     }
@@ -81,13 +86,14 @@ export async function transactionRoutes(app: FastifyInstance) {
         throw e;
       });
       if (!data.length) throw new ApiError(400, 'EMPTY_AUDIO', 'The recording was empty. Try again.');
-      const transcript = await app.stt.transcribe({ data, filename: file.filename || 'voice.m4a', mimeType: file.mimetype });
+      const [u] = await db.select({ voiceLanguage: users.voiceLanguage }).from(users).where(eq(users.id, req.userId));
+      const transcript = await app.stt.transcribe({ data, filename: file.filename || 'voice.m4a', mimeType: file.mimetype, language: u?.voiceLanguage });
       if (!transcript) throw new ApiError(400, 'EMPTY_AUDIO', 'I didn’t hear anything. Try again, like “taxi 20 ming”.');
       const c = await llm.categorize(transcript);
       if (!c.amount || c.amount <= 0) {
         throw new ApiError(400, 'INVALID_ARGS', `I heard “${transcript.slice(0, 120)}” but no amount. Try again, like “taxi 20 ming”.`);
       }
-      const t = await addExpense(db, req.userId, { amount: c.amount, category: c.category, description: c.description, source: 'voice' });
+      const t = await addExpense(db, req.userId, { ...(await parsedExpense(db, req.userId, { ...c, amount: c.amount })), source: 'voice' });
       reply.status(201);
       return { transcript, transaction: toTransaction(t) };
     });

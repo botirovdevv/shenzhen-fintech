@@ -1,4 +1,4 @@
-import type { Category, Transaction } from '@femate/shared';
+import { categorize, convertMoney, toMinor, type Category, type Transaction } from '@femate/shared';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, TextInput, View } from 'react-native';
@@ -8,8 +8,8 @@ import { Screen } from '@/components/Screen';
 import { Button, Card, Chip, haptic, IconTile, PressableScale, Text } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { categoryIcon } from '@/lib/categories';
-import { categoryLabel, formatAmount } from '@/lib/format';
-import { categorize } from '@/lib/mock';
+import { useCurrency } from '@/lib/currency';
+import { categoryLabel, formatAmount, formatMoney } from '@/lib/format';
 import { useAccounts, useCreateTransaction, useVoiceTransaction } from '@/lib/queries';
 import { radius, useTheme } from '@/theme';
 
@@ -17,7 +17,7 @@ const EXAMPLES: { label: string; icon: IconName }[] = [
   { label: 'taxi 20k', icon: 'transport' },
   { label: 'lunch 35 ming', icon: 'food' },
   { label: 'electricity 120000', icon: 'utilities' },
-  { label: 'coffee 17k', icon: 'coffee' },
+  { label: 'coffee $4.50', icon: 'coffee' },
 ];
 const PICKABLE: Category[] = ['transport', 'food', 'utilities', 'shopping', 'health', 'other'];
 const MAX_RECORDING_MS = 60_000; // PLAN.md Stage 6: ≤ 60 s
@@ -50,6 +50,7 @@ const mmss = (ms: number) => {
 };
 
 export default function Add() {
+  const cur = useCurrency();
   const { c } = useTheme();
   const accounts = useAccounts();
   const create = useCreateTransaction();
@@ -71,6 +72,9 @@ export default function Add() {
   // Live preview only; the server does the real categorisation when we send { text }.
   const parsed = categorize(text);
   const category = override ?? parsed.category;
+  // "coffee $4.50" on a so'm account: show what was typed, and what it becomes.
+  const entered = parsed.currency ?? cur;
+  const enteredMinor = parsed.amount === null ? 0 : toMinor(parsed.amount, entered);
   const cash = accounts.data?.find((a) => a.type === 'cash');
   const recording = recState.isRecording;
   const busy = voice.isPending;
@@ -87,7 +91,9 @@ export default function Add() {
     if (parsed.amount === null) return;
     setError(null);
     try {
-      const tx = await create.mutateAsync(override ? { amount: parsed.amount, category, description: parsed.description } : { text });
+      const tx = await create.mutateAsync(
+        override ? { amount: enteredMinor, currency: entered, category, description: parsed.description } : { text },
+      );
       haptic('success');
       setSaved({ tx });
     } catch (e) {
@@ -227,12 +233,19 @@ export default function Add() {
               </Text>
             </View>
           </View>
-          <Text variant="largeTitle" tabular style={{ fontSize: 40, lineHeight: 46 }}>
-            {formatAmount(parsed.amount ?? 0)}{' '}
-            <Text variant="title2" color="secondary">
-              UZS
+          <View style={{ gap: 2 }}>
+            <Text variant="largeTitle" tabular style={{ fontSize: 40, lineHeight: 46 }}>
+              {formatAmount(enteredMinor, entered)}{' '}
+              <Text variant="title2" color="secondary">
+                {entered}
+              </Text>
             </Text>
-          </Text>
+            {entered !== cur ? (
+              <Text variant="footnote" color="secondary" tabular>
+                ≈ {formatMoney(convertMoney(enteredMinor, entered, cur), cur)} at the sandbox rate
+              </Text>
+            ) : null}
+          </View>
           <View style={{ gap: 8 }}>
             <Text variant="footnote" color="secondary">
               {parsed.description} · tap to change category
@@ -265,7 +278,7 @@ export default function Add() {
                 Paid from
               </Text>
               <Text variant="callout" weight="600" tabular>
-                Cash · {formatAmount(cash?.balance ?? 0)} left
+                Cash · {formatAmount(cash?.balance ?? 0, cur)} left
               </Text>
             </View>
           </View>
@@ -288,7 +301,9 @@ export default function Add() {
             <IconTile name={categoryIcon[saved.tx.category]} bg={c.accentTint} fg={c.accent} size={44} iconSize={22} rounded={13} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="headline" tabular>
-                {formatAmount(saved.tx.amount)} UZS · {categoryLabel[saved.tx.category]}
+                {formatMoney(saved.tx.amount, cur)}
+                {saved.tx.original ? ` (${formatMoney(saved.tx.original.amount, saved.tx.original.currency)})` : ''} ·{' '}
+                {categoryLabel[saved.tx.category]}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Icon name="check" size={13} color={c.accent} strokeWidth={2.6} />

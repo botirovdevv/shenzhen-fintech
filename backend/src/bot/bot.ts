@@ -1,5 +1,5 @@
 // grammY bot, long polling (PLAN.md §4). Runs inside the API process when TELEGRAM_BOT_TOKEN is set.
-import type { AgentAction } from '@femate/shared';
+import type { AgentAction, VoiceLanguage } from '@femate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { Bot, GrammyError, InlineKeyboard, type Context } from 'grammy';
 
@@ -9,7 +9,7 @@ import { ApiError } from '../lib/errors';
 import { MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, type SttProvider } from '../stt/groq';
 import { HELP, dailyReport, decideAction, describeAction, handleText, handleVoice, linkChat, unlinkChat, userByChat, type Report } from './core';
 
-type Ctx = Context & { userId?: string };
+type Ctx = Context & { userId?: string; voiceLanguage?: VoiceLanguage };
 
 const NOT_LINKED =
   'This chat isn’t linked yet. In the FeMate app open Settings → Telegram bot → Get a link code, then send /start <code> here.';
@@ -28,7 +28,7 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
 
   async function sendReport(chatId: string, r: Report) {
     await bot.api.sendMessage(chatId, r.text);
-    for (const a of r.pending) await bot.api.sendMessage(chatId, describeAction(a), { reply_markup: actionKeyboard(a) });
+    for (const a of r.pending) await bot.api.sendMessage(chatId, describeAction(a, r.currency), { reply_markup: actionKeyboard(a) });
   }
 
   bot.command('start', async (ctx) => {
@@ -58,6 +58,7 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
       return;
     }
     ctx.userId = u.id;
+    ctx.voiceLanguage = u.voiceLanguage;
     await next();
   });
 
@@ -79,7 +80,7 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
     if (!res.ok) throw new Error(`Telegram file download failed: ${res.status}`);
     const data = new Uint8Array(await res.arrayBuffer());
     try {
-      const transcript = await stt.transcribe({ data, filename: 'voice.ogg', mimeType: v.mime_type ?? 'audio/ogg' });
+      const transcript = await stt.transcribe({ data, filename: 'voice.ogg', mimeType: v.mime_type ?? 'audio/ogg', language: ctx.voiceLanguage });
       return ctx.reply(await handleVoice(db, llm, ctx.userId!, transcript));
     } catch (e) {
       if (e instanceof ApiError) return ctx.reply(e.message);

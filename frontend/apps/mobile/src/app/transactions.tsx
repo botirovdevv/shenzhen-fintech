@@ -7,7 +7,8 @@ import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { Card, Chip, ErrorRow, IconTile, Text } from '@/components/ui';
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
-import { categoryLabel, formatAmount } from '@/lib/format';
+import { useCurrency } from '@/lib/currency';
+import { categoryLabel, formatAmount, formatMoney } from '@/lib/format';
 import { useTransactions } from '@/lib/queries';
 import { useTheme } from '@/theme';
 
@@ -25,6 +26,7 @@ const hm = (iso: string) => {
 };
 
 export default function Transactions() {
+  const cur = useCurrency();
   const { c } = useTheme();
   const txs = useTransactions();
   const [filter, setFilter] = useState<Category | 'all'>('all');
@@ -85,7 +87,7 @@ export default function Transactions() {
               {g.title}
             </Text>
             <Text variant="footnote" color="secondary" tabular>
-              −{formatAmount(g.total)}
+              −{formatAmount(g.total, cur)}
             </Text>
           </View>
           <Card padded={false} style={{ paddingVertical: 4 }}>
@@ -121,10 +123,17 @@ export default function Transactions() {
                     </Text>
                   </View>
                 </View>
-                <Text variant="body" weight="600" tabular color={t.category === 'transfer' ? c.accent : c.label}>
-                  {t.category === 'transfer' ? '' : '−'}
-                  {formatAmount(t.amount)}
-                </Text>
+                <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                  <Text variant="body" weight="600" tabular color={t.category === 'transfer' ? c.accent : c.label}>
+                    {t.category === 'transfer' ? '' : '−'}
+                    {formatAmount(t.amount, cur)}
+                  </Text>
+                  {t.original ? (
+                    <Text variant="footnote" color="secondary" tabular>
+                      {formatMoney(t.original.amount, t.original.currency)}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ))}
           </Card>

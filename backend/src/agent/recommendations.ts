@@ -1,13 +1,14 @@
 // Recommendation generator (PLAN.md §5 Stage 5): looks at the last 14 days; every number comes
 // from the Rules Engine, not the LLM. Regenerated at most once a day.
-import type { AgentAction, Recommendation } from '@femate/shared';
+import { fromUzs, niceStep, type AgentAction, type Currency, type Recommendation } from '@femate/shared';
 import { and, desc, eq, gte } from 'drizzle-orm';
 
 import { audit } from '../audit/audit';
+import { userCurrency } from '../bank/currency';
 import type { Db } from '../db/client';
 import { recommendations, transactions } from '../db/schema';
 import { notFound } from '../lib/errors';
-import { fmt } from '../lib/format';
+import { money } from '../lib/format';
 import { newId } from '../lib/ids';
 import { toRecommendation } from '../lib/serialize';
 import { addDays, dayStart, daysInMonth, tashkentDate } from '../lib/time';
@@ -16,24 +17,28 @@ import { BUS_FARE, whatIf } from '../rules/whatIf';
 
 type NewRec = Omit<typeof recommendations.$inferInsert, 'id' | 'userId'>;
 
-/** Pure: builds recommendations from 14 days of spending. Exported for tests. */
+/** Pure: builds recommendations from 14 days of spending. Exported for tests. Thresholds are UZS, converted. */
 export function buildRecommendations(
   spends: { amount: number; category: string; description: string; day: string }[],
   monthDays: number,
+  currency: Currency = 'UZS',
 ): NewRec[] {
   const recs: NewRec[] = [];
+  const fmt = (n: number) => money(n, currency);
+  const busTrip = fromUzs(2 * BUS_FARE, currency);
 
   // 1. Taxi -> bus on even days.
   const rides = spends.filter((t) => t.category === 'transport' && /yandex|taxi|taksi/i.test(t.description));
   const rideDays = new Set(rides.map((t) => t.day)).size;
   if (rideDays >= 5) {
-    const perDay = Math.round(rides.reduce((a, t) => a + t.amount, 0) / rideDays / 1000) * 1000;
+    const unit = niceStep(fromUzs(1000, currency));
+    const perDay = Math.round(rides.reduce((a, t) => a + t.amount, 0) / rideDays / unit) * unit;
     const busDays = Math.floor(monthDays / 2);
-    const { monthlySaving } = whatIf({ currentCostPerDay: perDay, alternativeCostPerDay: 2 * BUS_FARE, daysPerMonth: busDays });
+    const { monthlySaving } = whatIf({ currentCostPerDay: perDay, alternativeCostPerDay: busTrip, daysPerMonth: busDays });
     if (monthlySaving > 0)
       recs.push({
         title: 'Take the bus on even days',
-        body: `You take a taxi on ${rideDays} of the last 14 days, about ${fmt(perDay)} UZS a day. On ${busDays} even days a month, a ${fmt(2 * BUS_FARE)} UZS bus round trip saves ${fmt(perDay - 2 * BUS_FARE)} each day.`,
+        body: `You take a taxi on ${rideDays} of the last 14 days, about ${fmt(perDay)} a day. On ${busDays} even days a month, a ${fmt(busTrip)} bus round trip saves ${fmt(perDay - busTrip)} each day.`,
         monthlySaving,
       });
   }
@@ -45,12 +50,13 @@ export function buildRecommendations(
   ] as const) {
     const spent = spends.filter((t) => t.category === category).reduce((a, t) => a + t.amount, 0);
     const projected = Math.round((spent / 14) * monthDays);
-    if (projected < min) continue;
-    const cap = Math.floor((projected * 0.85) / 50_000) * 50_000;
+    if (projected < fromUzs(min, currency)) continue;
+    const step = niceStep(fromUzs(50_000, currency));
+    const cap = Math.floor((projected * 0.85) / step) * step;
     if (cap <= 0 || projected - cap <= 0) continue;
     recs.push({
       title: `Cap ${label} at ${fmt(cap)} a month`,
-      body: `${label[0]!.toUpperCase()}${label.slice(1)} is on pace for about ${fmt(projected)} UZS this month. A ${fmt(cap)} cap keeps you on track; FeMate will warn you at 80%.`,
+      body: `${label[0]!.toUpperCase()}${label.slice(1)} is on pace for about ${fmt(projected)} this month. A ${fmt(cap)} cap keeps you on track; FeMate will warn you at 80%.`,
       monthlySaving: projected - cap,
       actionType: 'set_budget',
       actionPayload: { category, monthlyLimit: cap },
@@ -76,6 +82,7 @@ export async function listRecommendations(db: Db, userId: string): Promise<Recom
   const built = buildRecommendations(
     rows.map((t) => ({ amount: t.amount, category: t.category, description: t.description, day: tashkentDate(t.occurredAt) })),
     daysInMonth(today),
+    await userCurrency(db, userId),
   );
   // Replace yesterday's untouched suggestions; applied ones stay as history.
   await db.delete(recommendations).where(and(eq(recommendations.userId, userId), eq(recommendations.status, 'new')));

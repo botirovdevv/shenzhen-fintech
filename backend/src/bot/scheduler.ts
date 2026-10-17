@@ -5,7 +5,7 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import type { Db } from '../db/client';
 import { users } from '../db/schema';
-import { fmt } from '../lib/format';
+import { money } from '../lib/format';
 import { dailySummary } from '../rules/dailyAllowance';
 import { dailyReport, type Report } from './core';
 
@@ -42,8 +42,8 @@ export async function runDueReports(
       if (u.expoPushToken && send.push) {
         const s = await dailySummary(db, u.id);
         const body = r.pending.length
-          ? `Spent ${fmt(s.todaySpent)} UZS today. An agent action is waiting for your approval.`
-          : `Spent ${fmt(s.todaySpent)} of ${fmt(s.dailyAllowance)} UZS today.`;
+          ? `Spent ${money(s.todaySpent, r.currency)} today. An agent action is waiting for your approval.`
+          : `Spent ${money(s.todaySpent, r.currency)} of ${money(s.dailyAllowance, r.currency)} today.`;
         await send.push(u.expoPushToken, 'Your FeMate day', body);
       }
       done.push(u.id);

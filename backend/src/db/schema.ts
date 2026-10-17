@@ -1,5 +1,5 @@
-// Database schema (PLAN.md §7). Money is integer UZS, ids are prefixed nanoids.
-import type { AgentActionStatus, AuditEntry, Category, PermissionLevel, Scope, TransactionSource } from '@femate/shared';
+// Database schema (PLAN.md §7). Money is an integer in the user's currency's minor unit, ids are prefixed nanoids.
+import type { AgentActionStatus, AuditEntry, Category, Currency, PermissionLevel, Scope, TransactionSource, VoiceLanguage } from '@femate/shared';
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -17,6 +17,8 @@ export const users = pgTable('users', {
   savingsGoalMonthly: integer('savings_goal_monthly').notNull().default(0),
   fixedCostsMonthly: integer('fixed_costs_monthly').notNull().default(0),
   reportTime: text('report_time').notNull().default('21:00'),
+  currency: text('currency').$type<Currency>().notNull().default('UZS'),
+  voiceLanguage: text('voice_language').$type<VoiceLanguage>().notNull().default('auto'),
   telegramChatId: text('telegram_chat_id'),
   expoPushToken: text('expo_push_token'),
   createdAt: createdAt(),
@@ -30,7 +32,7 @@ export const accounts = pgTable(
     type: text('type').$type<'card' | 'savings' | 'cash'>().notNull(),
     name: text('name').notNull(),
     balance: integer('balance').notNull(),
-    currency: text('currency').$type<'UZS'>().notNull().default('UZS'),
+    currency: text('currency').$type<Currency>().notNull().default('UZS'),
     createdAt: createdAt(),
   },
   (t) => [index('accounts_user_idx').on(t.userId)],
@@ -49,6 +51,9 @@ export const transactions = pgTable(
     category: text('category').$type<Category>().notNull(),
     description: text('description').notNull(),
     source: text('source').$type<TransactionSource>().notNull(),
+    // What the user entered when it wasn't their currency ("coffee $5" on a UZS account).
+    originalAmount: integer('original_amount'),
+    originalCurrency: text('original_currency').$type<Currency>(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     createdAt: createdAt(),
   },

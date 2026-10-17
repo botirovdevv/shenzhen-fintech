@@ -1,5 +1,5 @@
 // Shared API contract between apps/mobile, apps/api and apps/bot (PLAN.md §11).
-// Money is always an integer amount of UZS. Dates are ISO 8601 strings.
+// Money is an integer amount of the user's currency in its minor unit (so'm, cents). Dates are ISO 8601 strings.
 
 export type Category = 'transport' | 'food' | 'utilities' | 'shopping' | 'health' | 'entertainment' | 'education' | 'transfer' | 'other';
 
@@ -27,6 +27,8 @@ export interface User {
   fixedCostsMonthly: number;
   reportTime: string;
   telegramLinked: boolean;
+  currency: Currency;
+  voiceLanguage: VoiceLanguage;
 }
 
 export interface Account {
@@ -34,7 +36,7 @@ export interface Account {
   type: 'card' | 'savings' | 'cash';
   name: string;
   balance: number;
-  currency: 'UZS';
+  currency: Currency;
 }
 
 export type TransactionSource = 'bank' | 'manual' | 'voice' | 'sms_forward' | 'agent';
@@ -48,6 +50,8 @@ export interface Transaction {
   description: string;
   source: TransactionSource;
   occurredAt: string;
+  /** Set when the expense was entered in another currency and converted. */
+  original?: { amount: number; currency: Currency };
 }
 
 export interface DailySummary {
@@ -116,7 +120,10 @@ export interface LoginBody {
   password: string;
 }
 
-export type UpdateMeBody = Partial<Pick<User, 'monthlyIncome' | 'savingsGoalMonthly' | 'fixedCostsMonthly' | 'reportTime'>> & {
+// Changing `currency` converts every balance, transaction, budget and limit at the fixed rates below.
+export type UpdateMeBody = Partial<
+  Pick<User, 'monthlyIncome' | 'savingsGoalMonthly' | 'fixedCostsMonthly' | 'reportTime' | 'currency' | 'voiceLanguage'>
+> & {
   expoPushToken?: string;
 };
 
@@ -125,7 +132,8 @@ export interface ConnectBankBody {
   level: PermissionLevel;
 }
 
-export type CreateTransactionBody = { text: string } | { amount: number; category: Category; description: string };
+/** `currency` defaults to the user's; another one is converted, and the entered amount kept as `original`. */
+export type CreateTransactionBody = { text: string } | { amount: number; category: Category; description: string; currency?: Currency };
 
 export interface Page<T> {
   items: T[];
@@ -169,10 +177,97 @@ export interface ApiErrorBody {
   error: { code: string; message: string };
 }
 
-// System maximums per level (PLAN.md §8). Users may lower these, never raise them.
-export const LEVEL_LIMITS: Record<PermissionLevel, { perAction: number; daily: number } | null> = {
-  L0: null,
-  L1: null,
-  L2: { perAction: 100_000, daily: 300_000 },
-  L3: { perAction: 50_000, daily: 100_000 },
+
+// Currencies
+
+export type Currency = 'UZS' | 'USD' | 'EUR' | 'RUB' | 'CNY';
+export const CURRENCIES: readonly Currency[] = ['UZS', 'USD', 'EUR', 'RUB', 'CNY'];
+
+/** Speech-to-text language; 'auto' lets Whisper detect it. */
+export type VoiceLanguage = 'auto' | 'uz' | 'ru' | 'en';
+export const VOICE_LANGUAGES: readonly VoiceLanguage[] = ['auto', 'uz', 'ru', 'en'];
+
+export const CURRENCY_INFO: Record<
+  Currency,
+  {
+    name: string;
+    symbol: string;
+    symbolFirst: boolean;
+    decimals: number;
+    uzsRate: number;
+    levelLimits: { L2: [number, number]; L3: [number, number] };
+  }
+> = {
+  // uzsRate: UZS per 1 unit. Fixed sandbox rates, so demos and tests are reproducible.
+  // levelLimits: the agent's system maximum per level (PLAN.md §8), [per action, daily] in whole units,
+  // rounded from the UZS ones. Users may lower these, never raise them.
+  UZS: {
+    name: 'Uzbek so’m',
+    symbol: 'UZS',
+    symbolFirst: false,
+    decimals: 0,
+    uzsRate: 1,
+    levelLimits: { L2: [100_000, 300_000], L3: [50_000, 100_000] },
+  },
+  USD: { name: 'US dollar', symbol: '$', symbolFirst: true, decimals: 2, uzsRate: 12_100, levelLimits: { L2: [10, 30], L3: [5, 10] } },
+  EUR: { name: 'Euro', symbol: '€', symbolFirst: true, decimals: 2, uzsRate: 14_000, levelLimits: { L2: [10, 30], L3: [5, 10] } },
+  RUB: {
+    name: 'Russian ruble',
+    symbol: '₽',
+    symbolFirst: false,
+    decimals: 2,
+    uzsRate: 150,
+    levelLimits: { L2: [700, 2_000], L3: [350, 700] },
+  },
+  CNY: { name: 'Chinese yuan', symbol: '¥', symbolFirst: true, decimals: 2, uzsRate: 1_700, levelLimits: { L2: [60, 180], L3: [30, 60] } },
 };
+
+const scale = (c: Currency) => 10 ** CURRENCY_INFO[c].decimals;
+
+/** 4.5 USD -> 450 (minor units). */
+export const toMinor = (major: number, c: Currency) => Math.round(major * scale(c));
+/** 450 USD minor units -> 4.5. */
+export const toMajor = (minor: number, c: Currency) => minor / scale(c);
+
+/** Minor units of `from` -> minor units of `to`, at the fixed rates. */
+export function convertMoney(minor: number, from: Currency, to: Currency): number {
+  if (from === to) return minor;
+  return Math.round(((toMajor(minor, from) * CURRENCY_INFO[from].uzsRate) / CURRENCY_INFO[to].uzsRate) * scale(to));
+}
+
+/** A UZS amount (e.g. a rule threshold) in `c`'s minor units. */
+export const fromUzs = (uzs: number, c: Currency) => convertMoney(uzs, 'UZS', c);
+
+/** Rounds a step up to 1, 2 or 5 × 10^k, so converted thresholds stay readable (83 cents -> 100). */
+export function niceStep(minor: number): number {
+  if (minor <= 1) return 1;
+  const p = 10 ** Math.floor(Math.log10(minor));
+  return ([1, 2, 5, 10].find((m) => m * p >= minor) ?? 10) * p;
+}
+
+/** Level system maximum in `c`'s minor units. */
+export function levelLimits(level: PermissionLevel, c: Currency): { perAction: number; daily: number } | null {
+  if (level !== 'L2' && level !== 'L3') return null;
+  const [perAction, daily] = CURRENCY_INFO[c].levelLimits[level];
+  return { perAction: toMinor(perAction, c), daily: toMinor(daily, c) };
+}
+
+/** 2350000 UZS -> "2 350 000"; 125050 USD -> "1 250.50". No currency mark. */
+export function formatNumber(minor: number, c: Currency): string {
+  const d = CURRENCY_INFO[c].decimals;
+  const sign = minor < 0 ? '−' : '';
+  const abs = Math.abs(Math.round(minor));
+  const whole = String(Math.floor(abs / 10 ** d)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return sign + whole + (d ? `.${String(abs % 10 ** d).padStart(d, '0')}` : '');
+}
+
+/** "20 000 UZS", "$4.50", "350.00 ₽". */
+export function formatMoney(minor: number, c: Currency): string {
+  const i = CURRENCY_INFO[c];
+  const n = formatNumber(minor, c);
+  if (!i.symbolFirst) return `${n} ${i.symbol}`;
+  return n.startsWith('−') ? `−${i.symbol}${n.slice(1)}` : `${i.symbol}${n}`;
+}
+
+// Named, not `export *`: Node's CommonJS interop (tsx in the API) only sees names listed here.
+export { categorize, currencyOf, parseAmount, parseEnglishNumber, parseUzbekNumber } from './categorize';

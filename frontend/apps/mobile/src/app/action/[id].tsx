@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '@/components/Icon';
 import { Button, haptic, IconTile, Text } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
-import { formatAmount } from '@/lib/format';
+import { useCurrency } from '@/lib/currency';
+import { formatAmount, formatMoney } from '@/lib/format';
 import { useAccounts, useActions, useApproveAction, usePermissions, useRejectAction } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
@@ -16,6 +17,7 @@ function minutesLeft(iso?: string) {
 }
 
 export default function ActionSheet() {
+  const cur = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
@@ -46,8 +48,8 @@ export default function ActionSheet() {
   const checks: { ok: boolean; text: string }[] = isTransfer
     ? [
         { ok: true, text: 'Your own accounts only (Card → Savings)' },
-        { ok: !!p && amount <= p.perActionLimit, text: `Under the ${formatAmount(p?.perActionLimit ?? 0)} per-action limit` },
-        { ok: !!p && amount <= p.dailyLimit, text: `Today’s agent total stays under ${formatAmount(p?.dailyLimit ?? 0)}` },
+        { ok: !!p && amount <= p.perActionLimit, text: `Under the ${formatAmount(p?.perActionLimit ?? 0, cur)} per-action limit` },
+        { ok: !!p && amount <= p.dailyLimit, text: `Today’s agent total stays under ${formatAmount(p?.dailyLimit ?? 0, cur)}` },
         { ok: (card?.balance ?? 0) >= amount, text: 'Card balance covers the amount' },
       ]
     : [{ ok: true, text: 'Budgets never move money' }];
@@ -124,8 +126,8 @@ export default function ActionSheet() {
           <Text variant="callout" color="secondary" style={{ textAlign: 'center' }} tabular>
             {a.status === 'executed'
               ? isTransfer
-                ? `${formatAmount(amount)} UZS is in Savings. New balance: ${formatAmount(savings?.balance ?? 0)} UZS.`
-                : 'Food is capped at 800 000 UZS a month.'
+                ? `${formatMoney(amount, cur)} is in Savings. New balance: ${formatMoney(savings?.balance ?? 0, cur)}.`
+                : a.reason
               : 'The agent won’t retry this today.'}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -142,12 +144,18 @@ export default function ActionSheet() {
             <Text variant="headline" color="secondary">
               {isTransfer ? 'Move to Savings' : 'Set a monthly budget'}
             </Text>
-            <Text variant="largeTitle" tabular style={{ fontSize: 44, lineHeight: 50 }}>
-              {isTransfer ? formatAmount(amount) : '800 000'}{' '}
-              <Text variant="title2" color="secondary" style={{ fontSize: 22 }}>
-                UZS
+            {isTransfer ? (
+              <Text variant="largeTitle" tabular style={{ fontSize: 44, lineHeight: 50 }}>
+                {formatAmount(amount, cur)}{' '}
+                <Text variant="title2" color="secondary" style={{ fontSize: 22 }}>
+                  {cur}
+                </Text>
               </Text>
-            </Text>
+            ) : (
+              <Text variant="title" tabular style={{ fontSize: 28, lineHeight: 34 }}>
+                {a.reason}
+              </Text>
+            )}
           </View>
 
           {isTransfer ? (
@@ -161,7 +169,7 @@ export default function ActionSheet() {
                   {card?.name ?? 'Card'}
                 </Text>
                 <Text variant="caption" color="secondary" tabular>
-                  {formatAmount(card?.balance ?? 0)}
+                  {formatAmount(card?.balance ?? 0, cur)}
                 </Text>
               </View>
               <IconTile name="arrowRight" bg={c.fill} fg={c.secondary} size={32} iconSize={18} rounded={16} />
@@ -174,7 +182,7 @@ export default function ActionSheet() {
                   Savings
                 </Text>
                 <Text variant="caption" color="accentInk" tabular>
-                  {formatAmount(savings?.balance ?? 0)}
+                  {formatAmount(savings?.balance ?? 0, cur)}
                 </Text>
               </View>
             </View>

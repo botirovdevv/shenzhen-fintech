@@ -259,7 +259,7 @@ describe('agent loop', () => {
   it(`stops after ${MAX_TOOL_CALLS} tool calls even if the model keeps asking`, async () => {
     let calls = 0;
     const greedy: LlmProvider = {
-      categorize: async () => ({ amount: null, category: 'other', description: '' }),
+      categorize: async () => ({ amount: null, currency: null, category: 'other', description: '' }),
       chat: async ({ tools }) => (tools.length ? { toolCalls: [{ id: `c${++calls}`, name: 'get_balance', args: {} }] } : { text: 'done' }),
     };
     const r = await chat(t.db, greedy, DEMO.id, 'loop forever');

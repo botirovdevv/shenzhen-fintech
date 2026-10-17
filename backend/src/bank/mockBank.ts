@@ -1,5 +1,6 @@
 // Sandbox bank (PLAN.md §2, §8): the user's own card / savings / cash accounts and an atomic
 // card → savings transfer. There is deliberately no way to send money anywhere else.
+import { fromUzs } from '@femate/shared';
 import { and, eq, gte, sql } from 'drizzle-orm';
 
 import type { Db } from '../db/client';
@@ -7,6 +8,7 @@ import { accounts, transactions } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { addDays, tashkentDate, tashkentTime } from '../lib/time';
+import { userCurrency } from './currency';
 
 // Deterministic pseudo-random numbers so every sandbox history looks the same.
 function rng(seed: number) {
@@ -26,15 +28,18 @@ type NewTx = typeof transactions.$inferInsert;
 /**
  * Opens the sandbox accounts and 14 days of card history (PLAN.md §7 seed), including one
  * transaction whose note is a prompt-injection attempt. Returns the new accounts.
+ * Amounts are planned in UZS and opened in the user's currency.
  */
 export async function openSandboxAccounts(db: Db, userId: string, ids?: { card: string; savings: string; cash: string }) {
   const id = ids ?? { card: newId('acc'), savings: newId('acc'), cash: newId('acc') };
+  const currency = await userCurrency(db, userId);
+  const cur = (uzs: number) => fromUzs(uzs, currency);
   const created = await db
     .insert(accounts)
     .values([
-      { id: id.card, userId, type: 'card', name: 'Card ·· 1234', balance: 2_350_000 },
-      { id: id.savings, userId, type: 'savings', name: 'Savings', balance: 300_000 },
-      { id: id.cash, userId, type: 'cash', name: 'Cash', balance: 150_000 },
+      { id: id.card, userId, type: 'card', name: 'Card ·· 1234', balance: cur(2_350_000), currency },
+      { id: id.savings, userId, type: 'savings', name: 'Savings', balance: cur(300_000), currency },
+      { id: id.cash, userId, type: 'cash', name: 'Cash', balance: cur(150_000), currency },
     ])
     .returning();
 
@@ -52,7 +57,7 @@ export async function openSandboxAccounts(db: Db, userId: string, ids?: { card: 
   const lunches = ['Lunch, Rayhon', 'Osh markazi', 'Evos', 'Korzinka', 'Bazaar'];
   const rows: NewTx[] = [];
   const add = (t: Omit<NewTx, 'id' | 'userId' | 'accountId' | 'direction' | 'source'> & Partial<NewTx>) =>
-    rows.push({ id: newId('tx'), userId, accountId: id.card, direction: 'out', source: 'bank', ...t });
+    rows.push({ id: newId('tx'), userId, accountId: id.card, direction: 'out', source: 'bank', ...t, amount: cur(t.amount) });
 
   for (let day = 13; day >= 1; day--) {
     add({ amount: between(15_000, 25_000), category: 'transport', description: 'Yandex Go', occurredAt: at(day, 8, 40) });

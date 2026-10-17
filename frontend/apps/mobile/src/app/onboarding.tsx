@@ -1,3 +1,4 @@
+import { CURRENCIES, convertMoney, fromUzs, toMajor, toMinor, type Currency } from '@femate/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { BackHandler, Pressable, View } from 'react-native';
@@ -6,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '@/components/Icon';
 import { KeyboardInput, KeyboardScreen } from '@/components/KeyboardScreen';
 import { Button, Chip, IconTile, Text } from '@/components/ui';
-import { formatAmount } from '@/lib/format';
+import { useCurrency } from '@/lib/currency';
+import { formatMoney, formatWhole, parseWhole } from '@/lib/format';
 import { useMe, useUpdateMe } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
@@ -34,25 +36,40 @@ const STEPS: { title: string; hint: string; label: string; chips: number[]; icon
   },
 ];
 
+/** A UZS preset in `c`, rounded to two significant digits: 3 000 000 UZS -> $250. */
+function preset(uzs: number, c: Currency): number {
+  const major = toMajor(fromUzs(uzs, c), c);
+  const step = 10 ** Math.max(0, Math.floor(Math.log10(major)) - 1);
+  return toMinor(Math.round(major / step) * step, c);
+}
+
 function daysInMonth() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 }
 
 export default function Onboarding() {
+  const saved = useCurrency();
+  const [cur, setCur] = useState<Currency>('UZS');
   const { c, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const updateMe = useUpdateMe();
   const me = useMe();
   const editing = useLocalSearchParams<{ mode?: string }>().mode === 'edit';
   const [step, setStep] = useState(0);
-  const [values, setValues] = useState([4_000_000, 600_000, 500_000]);
+  const [values, setValues] = useState([4_000_000, 600_000, 500_000]); // minor units of `cur`
   const [loaded, setLoaded] = useState(false);
 
   // When editing from Settings, start from the saved numbers (adjusting state during render, once).
   if (editing && me.data && !loaded) {
     setLoaded(true);
+    setCur(me.data.currency);
     setValues([me.data.monthlyIncome, me.data.fixedCostsMonthly, me.data.savingsGoalMonthly]);
+  }
+  // A new account starts in the currency it already has (so'm unless changed).
+  if (!editing && me.data && !loaded) {
+    setLoaded(true);
+    if (saved !== 'UZS') pickCurrency(saved);
   }
   const q = STEPS[step]!;
   const value = values[step] ?? 0;
@@ -61,9 +78,18 @@ export default function Onboarding() {
   const last = step === STEPS.length - 1;
 
   const set = (v: number) => setValues((vs) => vs.map((x, i) => (i === step ? v : x)));
+  function pickCurrency(next: Currency) {
+    setValues((vs) => vs.map((v) => toMinor(Math.round(toMajor(convertMoney(v, cur, next), next)), next)));
+    setCur(next);
+  }
   const next = async () => {
     if (!last) return setStep(step + 1);
-    await updateMe.mutateAsync({ monthlyIncome: values[0], fixedCostsMonthly: values[1], savingsGoalMonthly: values[2] });
+    await updateMe.mutateAsync({
+      ...(editing ? {} : { currency: cur }),
+      monthlyIncome: values[0],
+      fixedCostsMonthly: values[1],
+      savingsGoalMonthly: values[2],
+    });
     if (editing) router.back();
     else router.push('/connect-bank');
   };
@@ -127,6 +153,19 @@ export default function Onboarding() {
         </Text>
       </View>
 
+      {step === 0 && !editing ? (
+        <View style={{ gap: 8 }}>
+          <Text variant="footnote" color="secondary" weight="600">
+            Currency
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {CURRENCIES.map((x) => (
+              <Chip key={x} label={x} selected={x === cur} onPress={() => pickCurrency(x)} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={{ gap: 8 }}>
         <Text variant="footnote" color="secondary" weight="600">
           {q.label}
@@ -143,8 +182,8 @@ export default function Onboarding() {
         >
           <KeyboardInput
             accessibilityLabel={q.label}
-            value={formatAmount(value)}
-            onChangeText={(t) => set(Number(t.replace(/\D/g, '').slice(0, 10) || 0))}
+            value={formatWhole(value, cur)}
+            onChangeText={(t) => set(parseWhole(t, cur))}
             keyboardType="number-pad"
             returnKeyType="next"
             onSubmitEditing={next}
@@ -159,13 +198,14 @@ export default function Onboarding() {
             }}
           />
           <Text variant="title2" color="secondary" weight="600">
-            UZS
+            {cur}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 }}>
-          {q.chips.map((n) => (
-            <Chip key={n} label={formatAmount(n)} selected={value === n} onPress={() => set(n)} />
-          ))}
+          {q.chips.map((uzs) => {
+            const n = preset(uzs, cur);
+            return <Chip key={uzs} label={formatWhole(n, cur)} selected={value === n} onPress={() => set(n)} />;
+          })}
         </View>
       </View>
 
@@ -178,7 +218,7 @@ export default function Onboarding() {
             Your daily allowance
           </Text>
           <Text variant="title2" color="accentInk" tabular style={{ fontSize: 24 }}>
-            {formatAmount(allowance)} UZS
+            {formatMoney(allowance, cur)}
           </Text>
           <Text variant="caption" color="accentInk">
             (income − fixed − goal) ÷ {days} days

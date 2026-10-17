@@ -7,6 +7,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, ErrorRow, haptic, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
 import { formatAmount, formatTime } from '@/lib/format';
 import { useActions, useAudit, useKillSwitch, usePermissions, useTransactions, useUpdatePermissions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
@@ -21,6 +22,7 @@ const scopeMeta = {
 } as const;
 
 export default function Activity() {
+  const cur = useCurrency();
   const { c } = useTheme();
   const perms = usePermissions();
   const audit = useAudit();
@@ -118,14 +120,14 @@ export default function Activity() {
               </Text>
             </View>
             <Text variant="headline" tabular>
-              {formatAmount(p?.perActionLimit ?? 0)}
+              {formatAmount(p?.perActionLimit ?? 0, cur)}
             </Text>
           </View>
           <View style={{ flex: 1, backgroundColor: c.fill, borderRadius: 14, padding: 12, gap: 6 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <Icon name="gauge" size={14} color={c.secondary} strokeWidth={2} />
               <Text variant="caption" color="secondary" tabular>
-                Today {formatAmount(usedToday)} / {formatAmount(p?.dailyLimit ?? 0)}
+                Today {formatAmount(usedToday, cur)} / {formatAmount(p?.dailyLimit ?? 0, cur)}
               </Text>
             </View>
             <ProgressBar value={p?.dailyLimit ? usedToday / p.dailyLimit : 0} color={c.accent} track={c.fill2} />

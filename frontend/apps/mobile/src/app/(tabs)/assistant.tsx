@@ -9,7 +9,8 @@ import { Icon, type IconName } from '@/components/Icon';
 import { Button, Card, haptic, IconTile, PressableScale, Text } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useKeyboardHeight } from '@/lib/useKeyboardHeight';
-import { formatAmount } from '@/lib/format';
+import { useCurrency } from '@/lib/currency';
+import { formatAmount, formatMoney } from '@/lib/format';
 import { useActions, useApplyRecommendation, useChat, usePermissions, useRecommendations } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
@@ -30,6 +31,7 @@ const SUGGESTIONS: { label: string; icon: IconName }[] = [
 const recIcon: Record<string, IconName> = { rec_bus: 'bus', rec_food: 'food' };
 
 export default function Assistant() {
+  const cur = useCurrency();
   const { c, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const recs = useRecommendations();
@@ -52,12 +54,12 @@ export default function Assistant() {
         {
           id: 'm1',
           who: 'agent',
-          text: `I can move ${formatAmount(first.amount ?? 0)} UZS to Savings. You are on Co-pilot, so it needs your approval.`,
+          text: `I can move ${formatMoney(first.amount ?? 0, cur)} to Savings. You are on Co-pilot, so it needs your approval.`,
           action: first,
         },
       ]);
     }
-  }, [pending.data, msgs.length]);
+  }, [pending.data, msgs.length, cur]);
 
   // Keep the newest message in view when the keyboard opens.
   useEffect(() => {
@@ -120,7 +122,7 @@ export default function Assistant() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Icon name="trend" size={13} color={c.accent} strokeWidth={2.4} />
                   <Text variant="footnote" color="accent" weight="600" tabular>
-                    Save {formatAmount(r.monthlySaving)} UZS / month
+                    Save {formatMoney(r.monthlySaving, cur)} / month
                   </Text>
                 </View>
                 <Text variant="headline">{r.title}</Text>
@@ -214,7 +216,7 @@ export default function Assistant() {
                     <Icon name="transfer" size={20} color={c.warnInk} strokeWidth={2} />
                     <View style={{ flex: 1 }}>
                       <Text variant="callout" weight="600" tabular>
-                        Card → Savings · {formatAmount(a.amount ?? 0)}
+                        Card → Savings · {formatAmount(a.amount ?? 0, cur)}
                       </Text>
                       <Text variant="footnote" color="warnInk">
                         Pending your approval
