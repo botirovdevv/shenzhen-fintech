@@ -1,11 +1,20 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { focusManager, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentAction, CreateTransactionBody, UpdateCardBody, UpdateMeBody, UpdatePermissionsBody } from '@femate/shared';
+import { AppState, Platform } from 'react-native';
 
 import { api } from './api';
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
 });
+
+// On a phone "window focus" is the app coming back to the foreground: refetch stale data then.
+if (Platform.OS !== 'web') {
+  focusManager.setEventListener((setFocused) => {
+    const sub = AppState.addEventListener('change', (s) => setFocused(s === 'active'));
+    return () => sub.remove();
+  });
+}
 
 export const keys = {
   me: ['me'] as const,

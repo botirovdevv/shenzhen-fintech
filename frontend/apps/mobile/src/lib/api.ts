@@ -67,24 +67,30 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
 
 async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = useSession.getState().token;
+  const init: RequestInit = {
+    method,
+    headers: {
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  };
+  // After the app returns from the background the first request can hit a dead keep-alive
+  // connection, so reads and sign-in get one more try. Anything that creates data or moves money doesn't.
+  const retryable = method === 'GET' || path === '/auth/login';
   let res: Response;
   try {
-    res = await fetchWithTimeout(
-      `${BASE_URL}${path}`,
-      {
-        method,
-        headers: {
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-      },
-      TIMEOUT_MS,
-    );
+    res = await fetchWithTimeout(`${BASE_URL}${path}`, init, TIMEOUT_MS);
   } catch (e) {
-    throw networkError(e);
+    if (!retryable) throw networkError(e);
+    try {
+      res = await fetchWithTimeout(`${BASE_URL}${path}`, init, TIMEOUT_MS);
+    } catch (e2) {
+      throw networkError(e2);
+    }
   }
-  if (res.status === 401) {
+  // A 401 on sign-in or sign-up is a wrong password, not an expired session.
+  if (res.status === 401 && token && !path.startsWith('/auth/')) {
     await useSession.getState().signOut();
     throw new ApiError('UNAUTHORIZED', 'Your session has ended. Sign in again.');
   }
