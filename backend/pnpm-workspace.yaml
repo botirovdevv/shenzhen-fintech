@@ -1,0 +1,3 @@
+# Standalone package (not part of the frontend workspace). @femate/shared is linked from ../frontend.
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,59 @@
+# FeMate on the VM: its own Postgres + the API, separate from every other stack there.
+# Secrets live in ./.env next to this file (created by scripts/deploy.sh, never committed).
+name: femate
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: femate-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: femate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: femate
+    volumes:
+      - femate-pg:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:5433:5432' # local only; reach it with an SSH tunnel
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U femate -d femate']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: femate-api:latest
+    container_name: femate-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://femate:${POSTGRES_PASSWORD}@db:5432/femate
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3100:3000' # local only; the public way in is the tunnel below
+    healthcheck:
+      # 127.0.0.1, not localhost: musl resolves localhost to ::1 first.
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # Cloudflare tunnel "femate": femate-api.usm0n.uz → http://api:3000 (route set in the dashboard).
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: femate-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      - api
+
+volumes:
+  femate-pg:
