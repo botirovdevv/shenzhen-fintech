@@ -15,7 +15,7 @@ import { radius, useTheme } from '@/theme';
 
 const EXAMPLES: { label: string; icon: IconName }[] = [
   { label: 'taxi 20k', icon: 'transport' },
-  { label: 'lunch 35 ming', icon: 'food' },
+  { label: 'lunch 35k', icon: 'food' },
   { label: 'electricity 120000', icon: 'utilities' },
   { label: 'coffee $4.50', icon: 'coffee' },
 ];
@@ -216,7 +216,7 @@ export default function Add() {
         <Card style={{ gap: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Icon name="sparkleSmall" size={15} color={c.accent} strokeWidth={2} />
+              <Icon name="bot" size={15} color={c.accent} strokeWidth={2} />
               <Text variant="sectionLabel" color="secondary">
                 FeMate understood
               </Text>
@@ -378,7 +378,7 @@ export default function Add() {
           <Text variant="footnote" color="secondary" weight="500" tabular style={{ fontSize: 14 }}>
             {recording
               ? `Listening ${mmss(recState.durationMillis)} / 1:00 · tap to stop`
-              : 'Tap and say “Bozorga qirq besh ming ishlatdim”'}
+              : 'Tap and say “Groceries 45 thousand at the bazaar”'}
           </Text>
         </View>
       </View>

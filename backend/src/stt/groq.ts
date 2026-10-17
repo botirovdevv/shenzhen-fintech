@@ -16,7 +16,6 @@ export interface SttProvider {
 // numbers, which the categorizer reads more reliably. People mix Uzbek, Russian and English.
 const PROMPTS: Record<VoiceLanguage, string> = {
   auto: "Taksi 20 ming. Osh 35 ming so'm. Kofe 18 000. Такси 20 тысяч. Lunch 45k. Coffee $4.50.",
-  uz: "Taksi 20 ming. Osh 35 ming so'm. Kofe 18 000. Bozorga 45 ming ishlatdim. 10 dollar.",
   ru: 'Такси 20 тысяч. Обед 35 000 сум. Кофе 18 000. Продукты 45 тысяч. 10 долларов.',
   en: 'Taxi 20,000 som. Lunch 45k. Coffee $4.50. Groceries 12 dollars. Dinner 30 euros.',
 };
@@ -49,7 +48,7 @@ export function createGroqStt(apiKey: string, model = 'whisper-large-v3'): SttPr
       if (!res.ok) throw new ApiError(502, 'STT_FAILED', 'The speech service didn’t answer. Try again, or type the expense.');
       const body = (await res.json()) as { text?: string; duration?: number };
       if ((body.duration ?? 0) > MAX_AUDIO_SECONDS + 1) {
-        throw new ApiError(400, 'AUDIO_TOO_LONG', `Keep it under ${MAX_AUDIO_SECONDS} seconds, like “taxi 20 ming”.`);
+        throw new ApiError(400, 'AUDIO_TOO_LONG', `Keep it under ${MAX_AUDIO_SECONDS} seconds, like “taxi 20000”.`);
       }
       return (body.text ?? '').trim();
     },

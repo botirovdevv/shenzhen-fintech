@@ -236,6 +236,50 @@ export interface PeriodSummary {
   byDay: { date: string; amount: number }[];
 }
 
+/** One category this week against its usual week (the 3 weeks before). `changePct` is null without history. */
+export interface CategoryTrend {
+  category: Category;
+  thisWeek: number;
+  usualWeek: number;
+  changePct: number | null;
+}
+
+/** Month-to-date spending against the plan. Every number comes from the Rules Engine. */
+export interface MonthPlan {
+  date: string;
+  dailyAllowance: number;
+  todaySpent: number;
+  /** How far today is over the daily allowance, in percent; 0 when within it. */
+  todayOverPct: number;
+  monthBudget: number;
+  monthSpent: number;
+  /** What the plan allowed from the 1st through today. */
+  plannedToDate: number;
+  dayOfMonth: number;
+  daysLeft: number;
+  /** Per-day limit for the remaining days that lands the month on budget; 0 when nothing is left. */
+  catchUpDaily: number;
+  /** How much less than the usual daily allowance that is. */
+  cutPerDay: number;
+  categoryTrends: CategoryTrend[];
+}
+
+export interface InsightTip {
+  category: Category | null;
+  text: string;
+  /** Rough saving over the rest of the month if the user follows the tip. */
+  saving: number;
+}
+
+/** The assistant's daily check-in. */
+export interface DailyInsight {
+  status: 'on_track' | 'over';
+  headline: string;
+  body: string;
+  tips: InsightTip[];
+  plan: MonthPlan;
+}
+
 export interface ChatResponse {
   reply: string;
   actions: AgentAction[];
@@ -275,8 +319,8 @@ export type Currency = 'UZS' | 'USD' | 'EUR' | 'RUB' | 'CNY';
 export const CURRENCIES: readonly Currency[] = ['UZS', 'USD', 'EUR', 'RUB', 'CNY'];
 
 /** Speech-to-text language; 'auto' lets Whisper detect it. */
-export type VoiceLanguage = 'auto' | 'uz' | 'ru' | 'en';
-export const VOICE_LANGUAGES: readonly VoiceLanguage[] = ['auto', 'uz', 'ru', 'en'];
+export type VoiceLanguage = 'auto' | 'ru' | 'en';
+export const VOICE_LANGUAGES: readonly VoiceLanguage[] = ['auto', 'ru', 'en'];
 
 export const CURRENCY_INFO: Record<
   Currency,

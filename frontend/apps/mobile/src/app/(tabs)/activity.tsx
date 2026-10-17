@@ -14,7 +14,7 @@ import { space, useTheme } from '@/theme';
 
 const levelName = { L0: 'Read-only', L1: 'Advisor', L2: 'Co-pilot', L3: 'Autopilot' } as const;
 const levelIcon: Record<keyof typeof levelName, IconName> = { L0: 'eye', L1: 'bulb', L2: 'shieldCheck', L3: 'rocket' };
-const actorIcon: Record<AuditEntry['actor'], IconName> = { agent: 'sparkleSmall', user: 'user', system: 'cpu' };
+const actorIcon: Record<AuditEntry['actor'], IconName> = { agent: 'bot', user: 'user', system: 'cpu' };
 const scopeMeta = {
   read_balance: { label: 'Balances', icon: 'eye' },
   read_transactions: { label: 'Transactions', icon: 'list' },

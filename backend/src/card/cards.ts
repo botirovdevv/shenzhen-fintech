@@ -9,6 +9,7 @@ import type { Db } from '../db/client';
 import { accounts, budgets, cardAuthorizations, cards, transactions, users } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
+import { checkSpendingAlerts } from '../notify/spendingAlerts';
 import { dayStart, tashkentDate } from '../lib/time';
 import type { CardIssuer } from './lithic';
 
@@ -156,7 +157,10 @@ export async function decideAuthorization(db: Db, req: AsaRequest): Promise<AsaD
     }
   }
   // 5. Approve: debit the card account and record the purchase
-  return record(db, card, req, { amount, own, charged, cents, merchant, category, result: 'APPROVED', reason: `${merchant} ${spent} approved.` });
+  const approved = await record(db, card, req, { amount, own, charged, cents, merchant, category, result: 'APPROVED', reason: `${merchant} ${spent} approved.` });
+  // Not awaited: the card network is waiting on this decision.
+  if (approved.result === 'APPROVED') void checkSpendingAlerts(db, card.userId).catch(() => undefined);
+  return approved;
 }
 
 async function spentThisMonth(db: Db, userId: string, category: Category): Promise<number> {

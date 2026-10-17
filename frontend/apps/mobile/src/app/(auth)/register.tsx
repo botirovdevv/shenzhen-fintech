@@ -38,7 +38,7 @@ export default function Register() {
       const res = await api.register({ name, email, password });
       await signIn(res.token);
       haptic('success');
-      router.replace('/onboarding');
+      router.replace('/appearance');
     } catch (e) {
       haptic('warning');
       setError(errorMessage(e));

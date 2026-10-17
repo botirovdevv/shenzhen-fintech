@@ -6,12 +6,13 @@ import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/Icon';
+import { InsightCard } from '@/components/InsightCard';
 import { Button, Card, haptic, IconTile, PressableScale, Text } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useKeyboardHeight } from '@/lib/useKeyboardHeight';
 import { useCurrency } from '@/lib/currency';
 import { formatAmount, formatMoney } from '@/lib/format';
-import { useActions, useApplyRecommendation, useChat, usePermissions, useRecommendations } from '@/lib/queries';
+import { useActions, useApplyRecommendation, useChat, useInsight, usePermissions, useRecommendations } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
 interface Msg {
@@ -23,6 +24,7 @@ interface Msg {
 
 const TAB_BAR = 49;
 const SUGGESTIONS: { label: string; icon: IconName }[] = [
+  { label: 'How am I doing this month?', icon: 'target' },
   { label: 'How much is left today?', icon: 'gauge' },
   { label: 'Move today’s savings', icon: 'savings' },
   { label: 'Move 500 000 to savings', icon: 'transfer' },
@@ -35,6 +37,7 @@ export default function Assistant() {
   const { c, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const recs = useRecommendations();
+  const insight = useInsight();
   const apply = useApplyRecommendation();
   const chat = useChat();
   const perms = usePermissions();
@@ -100,7 +103,7 @@ export default function Assistant() {
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4 }}>
-          <IconTile name="sparkle" bg={c.accent} fg={c.onAccent} size={44} iconSize={24} rounded={14} />
+          <IconTile name="bot" bg={c.accent} fg={c.onAccent} size={44} iconSize={24} rounded={14} />
           <View style={{ gap: 2 }}>
             <Text variant="title" accessibilityRole="header">
               Assistant
@@ -113,6 +116,8 @@ export default function Assistant() {
             </View>
           </View>
         </View>
+
+        {insight.data ? <InsightCard insight={insight.data} /> : null}
 
         {visibleRecs.map((r) => (
           <Card key={r.id} style={{ padding: 18, gap: 12 }}>
@@ -184,7 +189,7 @@ export default function Assistant() {
               key={m.id}
               style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', justifyContent: me ? 'flex-end' : 'flex-start' }}
             >
-              {!me ? <IconTile name="sparkleSmall" bg={c.accent} fg={c.onAccent} size={28} iconSize={15} rounded={14} /> : null}
+              {!me ? <IconTile name="bot" bg={c.accent} fg={c.onAccent} size={28} iconSize={15} rounded={14} /> : null}
               <View style={{ maxWidth: '80%', gap: 6, alignItems: me ? 'flex-end' : 'flex-start' }}>
                 <View
                   style={{
@@ -269,7 +274,7 @@ export default function Assistant() {
         })}
         {chat.isPending ? (
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <IconTile name="sparkleSmall" bg={c.accent} fg={c.onAccent} size={28} iconSize={15} rounded={14} />
+            <IconTile name="bot" bg={c.accent} fg={c.onAccent} size={28} iconSize={15} rounded={14} />
             <Text variant="footnote" color="secondary">
               Thinking…
             </Text>

@@ -4,6 +4,7 @@
 import { formatMoney, toMinor, type AgentAction, type Currency } from '@femate/shared';
 import { and, eq, gt } from 'drizzle-orm';
 
+import { dailyInsight } from '../agent/insights';
 import type { LlmProvider } from '../agent/llm/provider';
 import { audit } from '../audit/audit';
 import { userCurrency } from '../bank/currency';
@@ -18,8 +19,8 @@ import { parseSms } from '../rules/smsParser';
 
 export const HELP = [
   'Send me what you spent and I’ll add it to FeMate:',
-  '• taxi 20000  •  osh 35 ming  •  kofe 18k  •  coffee $4.50',
-  '• Send a voice note: “taksi yigirma ming” or “lunch twelve dollars”.',
+  '• taxi 20000  •  lunch 35k  •  coffee 18k  •  coffee $4.50',
+  '• Send a voice note: “taxi twenty thousand” or “lunch twelve dollars”.',
   '• Forward a bank SMS (Uzcard / Humo) and I’ll read it.',
   '',
   '/today: today’s report',
@@ -80,17 +81,17 @@ export async function handleText(db: Db, llm: LlmProvider, userId: string, text:
     return `✅ From the SMS: ${description}, ${spentText(t, own)} (${category}).\n${await leftToday(db, userId, own)}`;
   }
   const c = await llm.categorize(text);
-  if (!c.amount || c.amount <= 0) return 'I couldn’t find an amount. Try “taxi 20000” or “osh 35 ming”.';
+  if (!c.amount || c.amount <= 0) return 'I couldn’t find an amount. Try “taxi 20000” or “lunch 35k”.';
   const t = await addExpense(db, userId, { ...(await parsedExpense(db, userId, { ...c, amount: c.amount })), source: 'manual' });
   return `✅ Added: ${c.description}, ${spentText(t, own)} (${c.category}).\n${await leftToday(db, userId, own)}`;
 }
 
 /** A voice note, already turned into text. Same rules as a typed expense, saved with source voice. */
 export async function handleVoice(db: Db, llm: LlmProvider, userId: string, transcript: string): Promise<string> {
-  if (!transcript) return 'I didn’t hear anything. Try again, like “taxi 20 ming”.';
+  if (!transcript) return 'I didn’t hear anything. Try again, like “taxi 20000”.';
   const heard = `🎤 “${transcript.slice(0, 200)}”`;
   const c = await llm.categorize(transcript);
-  if (!c.amount || c.amount <= 0) return `${heard}\nI couldn’t find an amount. Try “taxi 20 ming” or type it.`;
+  if (!c.amount || c.amount <= 0) return `${heard}\nI couldn’t find an amount. Try “taxi 20000” or type it.`;
   const own = await userCurrency(db, userId);
   const t = await addExpense(db, userId, { ...(await parsedExpense(db, userId, { ...c, amount: c.amount })), source: 'voice' });
   return `${heard}\n✅ Added: ${c.description}, ${spentText(t, own)} (${c.category}).\n${await leftToday(db, userId, own)}`;
@@ -131,6 +132,9 @@ export async function dailyReport(db: Db, userId: string, opts: { propose?: bool
   if (s.byCategory.length) {
     lines.push('', ...s.byCategory.slice(0, 5).map((c) => `• ${c.category}: ${fmt(c.amount)}`));
   }
+
+  const insight = await dailyInsight(db, userId, s.date);
+  if (insight.status === 'over') lines.push('', insight.headline, insight.body, ...insight.tips.slice(0, 2).map((t) => `💡 ${t.text}`));
 
   if (opts.propose && s.savedToday > 0) {
     const [p] = await db.select().from(permissions).where(eq(permissions.userId, userId));

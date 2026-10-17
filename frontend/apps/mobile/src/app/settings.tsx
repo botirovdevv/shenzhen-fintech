@@ -21,7 +21,7 @@ const BOT_URL = 'https://t.me/femate_uz_bot';
 
 const REPORT_TIMES = ['18:00', '19:00', '20:00', '20:30', '21:00', '21:30', '22:00', '23:00'];
 
-const VOICE_LABEL: Record<VoiceLanguage, string> = { auto: 'Auto-detect', uz: 'O‘zbekcha', ru: 'Русский', en: 'English' };
+const VOICE_LABEL: Record<VoiceLanguage, string> = { auto: 'Auto-detect', ru: 'Русский', en: 'English' };
 
 /** "1 USD = 12 100 UZS" at the fixed sandbox rates. */
 const rate = (x: Currency) => `1 ${x} = ${formatAmount(CURRENCY_INFO[x].uzsRate, 'UZS')} UZS`;

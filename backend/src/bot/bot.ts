@@ -72,7 +72,7 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
     if (!stt) return ctx.reply('Voice messages aren’t on yet. Type it instead, like “taxi 20000”.');
     const v = ctx.message.voice;
     if (v.duration > MAX_AUDIO_SECONDS || (v.file_size ?? 0) > MAX_AUDIO_BYTES) {
-      return ctx.reply(`Keep voice notes under ${MAX_AUDIO_SECONDS} seconds, like “taksi yigirma ming”.`);
+      return ctx.reply(`Keep voice notes under ${MAX_AUDIO_SECONDS} seconds, like “taxi twenty thousand”.`);
     }
     await ctx.replyWithChatAction('typing');
     const file = await ctx.getFile();
@@ -112,6 +112,9 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
   return {
     bot,
     sendReport,
+    async sendText(chatId: string, text: string) {
+      await bot.api.sendMessage(chatId, text);
+    },
     async start() {
       await bot.api.setMyCommands([
         { command: 'today', description: 'Today’s report' },

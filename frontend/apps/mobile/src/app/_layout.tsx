@@ -44,6 +44,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />
+          <Stack.Screen name="appearance" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="connect-bank" />
           <Stack.Screen name="(tabs)" />

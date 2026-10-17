@@ -4,6 +4,7 @@ import { startScheduler } from './bot/scheduler';
 import { loadConfig } from './config';
 import { connect } from './db/client';
 import { demoExists, resetDemo } from './db/demo';
+import { expoPush, setChannels } from './notify/notify';
 
 const config = loadConfig();
 const { db, close } = await connect(config.DATABASE_URL); // also applies migrations
@@ -19,6 +20,7 @@ else app.log.warn('TELEGRAM_BOT_TOKEN is empty: the Telegram bot is off');
 if (!app.stt) app.log.warn('GROQ_API_KEY is empty: voice input is off');
 if (!app.cards) app.log.warn('LITHIC_API_KEY is empty: the FeMate card is off');
 else if (!config.LITHIC_ASA_SECRET) app.log.warn('LITHIC_ASA_SECRET is empty: card purchase requests are not signature-checked (sandbox only)');
+setChannels({ push: expoPush, telegram: bot?.sendText });
 const stopScheduler = startScheduler(db, bot?.sendReport, app.log);
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

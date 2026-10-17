@@ -1,29 +1,32 @@
 import type { Category } from '@femate/shared';
-import { Link, router } from 'expo-router';
+import { Link, router, type Href } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/Icon';
-import { ProgressRing } from '@/components/ProgressRing';
+import { InsightCard } from '@/components/InsightCard';
 import { Screen } from '@/components/Screen';
-import { Banner, Button, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
+import { Banner, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
 import { useCurrency } from '@/lib/currency';
 import { categoryLabel, formatAmount, formatMoney, formatTime, greeting } from '@/lib/format';
-import { useAccounts, useActions, useDailySummary, useMe, useTransactions } from '@/lib/queries';
+import { useAccounts, useActions, useDailySummary, useInsight, useMe, useTransactions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
+// Home answers three questions in this order: how much can I still spend today, what should I do about it,
+// and where is my money. Everything else is one tap away.
 export default function Home() {
   const cur = useCurrency();
   const { c } = useTheme();
   const me = useMe();
   const accounts = useAccounts();
   const summary = useDailySummary();
+  const insight = useInsight();
   const txs = useTransactions();
   const pending = useActions('pending');
 
   const refreshing = accounts.isRefetching || summary.isRefetching || txs.isRefetching;
-  const refresh = () => void Promise.all([accounts.refetch(), summary.refetch(), txs.refetch(), pending.refetch()]);
+  const refresh = () => void Promise.all([accounts.refetch(), summary.refetch(), txs.refetch(), pending.refetch(), insight.refetch()]);
 
   const monthByCategory = useMemo(() => {
     const start = new Date();
@@ -45,12 +48,20 @@ export default function Home() {
   const over = s ? s.remainingToday < 0 : false;
   const firstPending = pending.data?.[0];
   const max = monthByCategory[0]?.[1] ?? 1;
+  const statusColor = over ? c.warn : c.accent;
 
-  const accountStyle: Record<string, { icon: IconName; bg: string; fg: string; sub: string }> = {
-    card: { icon: 'card', bg: c.fill, fg: c.label, sub: c.secondary },
-    savings: { icon: 'savings', bg: c.accentTint, fg: c.accentInk, sub: c.accentInk },
-    cash: { icon: 'cash', bg: c.fill, fg: c.label, sub: c.secondary },
+  const accountStyle: Record<string, { icon: IconName; bg: string; fg: string }> = {
+    card: { icon: 'card', bg: c.fill, fg: c.label },
+    savings: { icon: 'savings', bg: c.accentTint, fg: c.accentInk },
+    cash: { icon: 'cash', bg: c.fill, fg: c.label },
   };
+
+  const actions: { label: string; icon: IconName; href: Href; primary?: boolean }[] = [
+    { label: 'Expense', icon: 'plus', href: '/add', primary: true },
+    { label: 'Add money', icon: 'wallet', href: { pathname: '/money', params: { mode: 'add' } } },
+    { label: 'Move', icon: 'transfer', href: { pathname: '/money', params: { mode: 'move' } } },
+    { label: 'Fix cash', icon: 'tune', href: { pathname: '/money', params: { mode: 'set', account: 'cash' } } },
+  ];
 
   return (
     <Screen
@@ -115,71 +126,93 @@ export default function Home() {
         />
       ) : null}
 
-      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
+      {/* 1. The one number that matters today. */}
+      <Card style={{ gap: space.lg }}>
         {s ? (
           <>
-            <ProgressRing value={spentRatio} color={over ? c.warn : c.accent} track={c.accentTint}>
-              <Text variant="title2" tabular style={{ fontSize: 24 }}>
-                {Math.round(spentRatio * 100)}%
-              </Text>
-              <Text variant="caption" color="secondary">
-                spent
-              </Text>
-            </ProgressRing>
-            <View style={{ flex: 1, gap: 10 }}>
-              <View style={{ gap: 2 }}>
-                <Text variant="footnote" color="secondary" weight="500">
-                  {over ? 'Over today’s limit' : 'Left for today'}
-                </Text>
-                <Text variant="title" tabular color={over ? c.warn : c.accent} style={{ fontSize: 28 }}>
-                  {formatAmount(Math.abs(s.remainingToday), cur)}{' '}
-                  <Text variant="callout" weight="600" color={over ? c.warn : c.accent}>
-                    {cur}
-                  </Text>
+            <View style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name={over ? 'shieldAlert' : 'gauge'} size={15} color={statusColor} strokeWidth={2.2} />
+                <Text variant="footnote" weight="600" style={{ color: statusColor }}>
+                  {over ? 'Over today’s limit by' : 'You can still spend today'}
                 </Text>
               </View>
-              <View style={{ gap: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Icon name="arrowDownRight" size={14} color={c.secondary} strokeWidth={2.2} />
-                  <Text variant="footnote" color="secondary">
-                    Spent{' '}
-                    <Text variant="footnote" weight="600" tabular>
-                      {formatAmount(s.todaySpent, cur)}
-                    </Text>
+              <Text
+                variant="largeTitle"
+                tabular
+                style={{ fontSize: 40, lineHeight: 46, color: over ? c.warn : c.label }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(Math.abs(s.remainingToday), cur)}{' '}
+                <Text variant="title2" color="secondary">
+                  {cur}
+                </Text>
+              </Text>
+            </View>
+            <View style={{ gap: 8 }}>
+              <ProgressBar value={spentRatio} color={statusColor} track={over ? c.warnTint : c.accentTint} height={10} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text variant="footnote" color="secondary" tabular>
+                  Spent{' '}
+                  <Text variant="footnote" weight="600" tabular>
+                    {formatAmount(s.todaySpent, cur)}
                   </Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Icon name="gauge" size={14} color={c.secondary} strokeWidth={2.2} />
-                  <Text variant="footnote" color="secondary">
-                    Daily limit{' '}
-                    <Text variant="footnote" weight="600" tabular>
-                      {formatAmount(s.dailyAllowance, cur)}
-                    </Text>
+                </Text>
+                <Text variant="footnote" color="secondary" tabular>
+                  Daily limit{' '}
+                  <Text variant="footnote" weight="600" tabular>
+                    {formatAmount(s.dailyAllowance, cur)}
                   </Text>
-                </View>
+                </Text>
               </View>
             </View>
           </>
         ) : summary.isError ? (
-          <View style={{ flex: 1 }}>
-            <ErrorRow message="Couldn’t load today’s limit." onRetry={() => void summary.refetch()} />
-          </View>
+          <ErrorRow message="Couldn’t load today’s limit." onRetry={() => void summary.refetch()} />
         ) : (
-          <ActivityIndicator color={c.accent} style={{ flex: 1, height: 112 }} />
+          <ActivityIndicator color={c.accent} style={{ height: 112 }} />
         )}
       </Card>
 
-      <Card style={{ gap: space.lg }}>
-        <View style={{ gap: 2 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="wallet" size={15} color={c.secondary} strokeWidth={2} />
-            <Text variant="footnote" color="secondary" weight="500">
-              Total balance
-            </Text>
+      {/* 2. What to do about it: the assistant's check-in, only when something needs attention. */}
+      {insight.data?.status === 'over' ? <InsightCard insight={insight.data} compact /> : null}
+
+      {/* 3. Quick actions: equal tiles, labels under the icons so they never wrap. */}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {actions.map((a) => (
+          <View key={a.label} style={{ flex: 1 }}>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={a.label}
+              onPress={() => router.push(a.href)}
+              style={{ alignItems: 'center', gap: 8, paddingVertical: 12, borderRadius: 18, backgroundColor: c.card }}
+            >
+              <IconTile
+                name={a.icon}
+                bg={a.primary ? c.accent : c.fill}
+                fg={a.primary ? c.onAccent : c.label}
+                size={44}
+                iconSize={22}
+                rounded={22}
+              />
+              <Text variant="caption" weight="600" numberOfLines={1} adjustsFontSizeToFit>
+                {a.label}
+              </Text>
+            </PressableScale>
           </View>
-          <Text variant="largeTitle" tabular style={{ fontSize: 32 }}>
+        ))}
+      </View>
+
+      {/* 4. Where the money is. */}
+      <Card style={{ gap: space.md }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <Text variant="footnote" color="secondary" weight="500">
+            Total balance
+          </Text>
+          <Text variant="title2" tabular>
             {formatAmount(total, cur)}{' '}
-            <Text variant="headline" color="secondary">
+            <Text variant="footnote" color="secondary" weight="600">
               {cur}
             </Text>
           </Text>
@@ -187,138 +220,78 @@ export default function Home() {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(accounts.data ?? []).map((a) => {
             const st = accountStyle[a.type]!;
+            const box = { backgroundColor: st.bg, borderRadius: 14, padding: 12, gap: 6 };
             const tile = (
               <>
-                <Icon name={st.icon} size={20} color={st.fg} />
-                <View>
-                  <Text variant="caption" color={st.sub} numberOfLines={1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Icon name={st.icon} size={16} color={st.fg} strokeWidth={2} />
+                  <Text variant="caption" weight="600" numberOfLines={1} style={{ color: st.fg, flexShrink: 1 }}>
                     {a.name}
                   </Text>
-                  <Text variant="callout" weight="600" color={st.fg} tabular numberOfLines={1} adjustsFontSizeToFit>
-                    {formatAmount(a.balance, cur)}
-                  </Text>
                 </View>
+                <Text variant="callout" weight="600" tabular numberOfLines={1} adjustsFontSizeToFit style={{ color: st.fg }}>
+                  {formatAmount(a.balance, cur)}
+                </Text>
               </>
             );
-            const box = { backgroundColor: st.bg, borderRadius: 14, padding: 12, gap: 6 };
             // The card account opens the FeMate card screen.
-            return a.type === 'card' ? (
+            return (
               <View key={a.id} style={{ flex: 1 }}>
-                <PressableScale
-                  onPress={() => router.push('/card')}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${a.name}, open FeMate card`}
-                  style={[box, { flexGrow: 1 }]}
-                >
-                  {tile}
-                </PressableScale>
-              </View>
-            ) : (
-              <View key={a.id} style={[box, { flex: 1 }]}>
-                {tile}
+                {a.type === 'card' ? (
+                  <PressableScale
+                    onPress={() => router.push('/card')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${a.name}, open FeMate card`}
+                    style={box}
+                  >
+                    {tile}
+                  </PressableScale>
+                ) : (
+                  <View style={box}>{tile}</View>
+                )}
               </View>
             );
           })}
         </View>
-        {/* Button's style lands inside its Pressable, so a wrapper takes the row's space. */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Button
-              title="Add money"
-              icon="plus"
-              size="small"
-              variant="tinted"
-              onPress={() => router.push({ pathname: '/money', params: { mode: 'add' } })}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              title="Move"
-              icon="transfer"
-              size="small"
-              variant="secondary"
-              onPress={() => router.push({ pathname: '/money', params: { mode: 'move' } })}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              title="Fix cash"
-              icon="tune"
-              size="small"
-              variant="secondary"
-              onPress={() => router.push({ pathname: '/money', params: { mode: 'set', account: 'cash' } })}
-            />
-          </View>
-        </View>
       </Card>
 
-      <Card style={{ gap: 14 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="chart" size={20} color={c.accent} strokeWidth={2} />
-            <Text variant="title2">This month</Text>
-          </View>
-          <PressableScale
-            onPress={() => router.push('/reports')}
-            accessibilityRole="link"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 }}
-          >
-            <Text variant="callout" color="accent" weight="500">
-              Reports
-            </Text>
-            <Icon name="chevronRight" size={14} color={c.accent} strokeWidth={2.4} />
-          </PressableScale>
-        </View>
-        {monthByCategory.map(([cat, amount], i) => (
-          <View key={cat} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <IconTile name={categoryIcon[cat]} bg={c.fill} fg={c.label} size={34} iconSize={18} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text variant="callout" weight="500">
-                  {categoryLabel[cat]}
-                </Text>
-                <Text variant="callout" color="secondary" tabular>
-                  {formatAmount(amount, cur)}
-                </Text>
+      {monthByCategory.length ? (
+        <Card style={{ gap: 14 }}>
+          <SectionHeader icon="chart" title="This month" link="Reports" onPress={() => router.push('/reports')} />
+          {monthByCategory.map(([cat, amount], i) => (
+            <View key={cat} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <IconTile name={categoryIcon[cat]} bg={c.fill} fg={c.label} size={34} iconSize={18} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text variant="callout" weight="500">
+                    {categoryLabel[cat]}
+                  </Text>
+                  <Text variant="callout" color="secondary" tabular>
+                    {formatAmount(amount, cur)}
+                  </Text>
+                </View>
+                <ProgressBar value={amount / max} color={c.categoryShades[i] ?? c.accent} track={c.fill} />
               </View>
-              <ProgressBar value={amount / max} color={c.categoryShades[i] ?? c.accent} track={c.fill} />
             </View>
-          </View>
-        ))}
-      </Card>
+          ))}
+        </Card>
+      ) : null}
 
       <Card padded={false} style={{ paddingVertical: 8 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingLeft: 20,
-            paddingRight: 16,
-            paddingTop: 4,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="clock" size={20} color={c.accent} strokeWidth={2} />
-            <Text variant="title2">Recent</Text>
-          </View>
-          <PressableScale
-            onPress={() => router.push('/transactions')}
-            accessibilityRole="link"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 }}
-          >
-            <Text variant="callout" color="accent" weight="500">
-              See all
-            </Text>
-            <Icon name="chevronRight" size={14} color={c.accent} strokeWidth={2.4} />
-          </PressableScale>
+        <View style={{ paddingLeft: 20, paddingRight: 16, paddingTop: 4 }}>
+          <SectionHeader icon="clock" title="Recent" link="See all" onPress={() => router.push('/transactions')} />
         </View>
         {txs.isError ? (
           <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
             <ErrorRow message="Couldn’t load transactions." onRetry={() => void txs.refetch()} />
           </View>
         ) : null}
-        {(txs.data?.items ?? []).slice(0, 6).map((t) => (
+        {txs.data && txs.data.items.length === 0 ? (
+          <Text variant="callout" color="secondary" style={{ paddingHorizontal: 20, paddingVertical: 12 }}>
+            Nothing yet. Tap Expense above to add your first one.
+          </Text>
+        ) : null}
+        {(txs.data?.items ?? []).slice(0, 4).map((t) => (
           <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 20 }}>
             <IconTile
               name={categoryIcon[t.category]}
@@ -334,7 +307,7 @@ export default function Home() {
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Icon name={sourceIcon[t.source]} size={13} color={c.secondary} strokeWidth={2.2} />
-                <Text variant="footnote" color="secondary">
+                <Text variant="footnote" color="secondary" numberOfLines={1}>
                   {categoryLabel[t.category]} · {formatTime(t.occurredAt)} · {sourceLabel[t.source]}
                 </Text>
               </View>
@@ -354,5 +327,27 @@ export default function Home() {
         ))}
       </Card>
     </Screen>
+  );
+}
+
+function SectionHeader({ icon, title, link, onPress }: { icon: IconName; title: string; link: string; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Icon name={icon} size={20} color={c.accent} strokeWidth={2} />
+        <Text variant="title2">{title}</Text>
+      </View>
+      <PressableScale
+        onPress={onPress}
+        accessibilityRole="link"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 }}
+      >
+        <Text variant="callout" color="accent" weight="500">
+          {link}
+        </Text>
+        <Icon name="chevronRight" size={14} color={c.accent} strokeWidth={2.4} />
+      </PressableScale>
+    </View>
   );
 }

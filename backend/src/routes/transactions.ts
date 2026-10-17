@@ -59,7 +59,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     const b = parse(createBody, req.body);
     let e: { amount: number; currency?: Currency | null; category: Category; description: string };
     if ('text' in b) {
-      // Free text ("taxi 20 ming", "coffee $4.50") is categorized by the LLM adapter; the amount must be found.
+      // Free text ("taxi 20000", "coffee $4.50") is categorized by the LLM adapter; the amount must be found.
       const c = await llm.categorize(b.text);
       if (!c.amount || c.amount <= 0) throw new ApiError(400, 'INVALID_ARGS', 'Add an amount, for example “taxi 20k”.');
       e = await parsedExpense(db, req.userId, { ...c, amount: c.amount });
@@ -88,10 +88,10 @@ export async function transactionRoutes(app: FastifyInstance) {
       if (!data.length) throw new ApiError(400, 'EMPTY_AUDIO', 'The recording was empty. Try again.');
       const [u] = await db.select({ voiceLanguage: users.voiceLanguage }).from(users).where(eq(users.id, req.userId));
       const transcript = await app.stt.transcribe({ data, filename: file.filename || 'voice.m4a', mimeType: file.mimetype, language: u?.voiceLanguage });
-      if (!transcript) throw new ApiError(400, 'EMPTY_AUDIO', 'I didn’t hear anything. Try again, like “taxi 20 ming”.');
+      if (!transcript) throw new ApiError(400, 'EMPTY_AUDIO', 'I didn’t hear anything. Try again, like “taxi 20000”.');
       const c = await llm.categorize(transcript);
       if (!c.amount || c.amount <= 0) {
-        throw new ApiError(400, 'INVALID_ARGS', `I heard “${transcript.slice(0, 120)}” but no amount. Try again, like “taxi 20 ming”.`);
+        throw new ApiError(400, 'INVALID_ARGS', `I heard “${transcript.slice(0, 120)}” but no amount. Try again, like “taxi 20000”.`);
       }
       const t = await addExpense(db, req.userId, { ...(await parsedExpense(db, req.userId, { ...c, amount: c.amount })), source: 'voice' });
       reply.status(201);

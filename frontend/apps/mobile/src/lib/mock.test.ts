@@ -93,7 +93,7 @@ describe('mock API rules (PLAN.md §8, §9)', () => {
   it('turns a voice note into a saved expense', async () => {
     const { mockApi } = await fresh();
     const res = await mockApi.voiceTransaction('file://voice.m4a');
-    expect(res.transcript).toBe('Bozorga qirq besh ming ishlatdim');
+    expect(res.transcript).toBe('Groceries at the bazaar 45k');
     expect(res.transaction).toMatchObject({ amount: 45_000, category: 'food', source: 'voice' });
   });
 

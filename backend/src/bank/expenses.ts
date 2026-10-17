@@ -2,6 +2,7 @@ import { convertMoney, formatMoney, toMinor, type Category, type Currency, type 
 import { eq, sql } from 'drizzle-orm';
 
 import type { Db } from '../db/client';
+import { checkSpendingAlerts } from '../notify/spendingAlerts';
 import { accounts, transactions } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
@@ -41,7 +42,7 @@ export async function addExpense(
   const foreign = currency && currency !== own ? currency : null;
   const amount = foreign ? convertMoney(e.amount, foreign, own) : e.amount;
   if (amount <= 0) throw new ApiError(400, 'INVALID_ARGS', 'That amount is too small to record.');
-  return db.transaction(async (tx) => {
+  const t = await db.transaction(async (tx) => {
     await tx
       .update(accounts)
       .set({ balance: sql`${accounts.balance} - ${amount}` })
@@ -61,4 +62,6 @@ export async function addExpense(
       .returning();
     return t!;
   });
+  await checkSpendingAlerts(db, userId).catch(() => undefined); // an alert must never undo a recorded expense
+  return t;
 }

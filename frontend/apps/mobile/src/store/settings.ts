@@ -15,7 +15,8 @@ interface SettingsState {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
-      appearance: 'system',
+      // New installs start on a white background; System, Light and Dark stay in Settings.
+      appearance: 'light',
       pushEnabled: false,
       setAppearance: (appearance) => set({ appearance }),
       setPushEnabled: (pushEnabled) => set({ pushEnabled }),

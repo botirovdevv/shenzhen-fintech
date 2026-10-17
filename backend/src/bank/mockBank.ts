@@ -67,7 +67,7 @@ export async function seedDemoHistory(db: Db, userId: string, id: AccountIds) {
   };
   const r = rng(42);
   const between = (lo: number, hi: number) => Math.round((lo + r() * (hi - lo)) / 1000) * 1000;
-  const lunches = ['Lunch, Rayhon', 'Osh markazi', 'Evos', 'Korzinka', 'Bazaar'];
+  const lunches = ['Lunch, Rayhon', 'Plov Center', 'Evos', 'Korzinka', 'Bazaar'];
   const rows: NewTx[] = [];
   const add = (t: Omit<NewTx, 'id' | 'userId' | 'accountId' | 'direction' | 'source'> & Partial<NewTx>) =>
     rows.push({ id: newId('tx'), userId, accountId: id.card, direction: 'out', source: 'bank', ...t, amount: cur(t.amount) });

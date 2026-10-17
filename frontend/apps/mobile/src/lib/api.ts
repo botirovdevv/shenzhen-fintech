@@ -12,6 +12,7 @@ import type {
   ChatResponse,
   ConnectBankBody,
   CreateTransactionBody,
+  DailyInsight,
   DailySummary,
   DepositBody,
   LoginBody,
@@ -162,6 +163,7 @@ export const api = {
   createTransaction: (b: CreateTransactionBody) =>
     usingMock ? mockApi.createTransaction(b) : http<Transaction>('POST', '/transactions', b),
   dailySummary: () => (usingMock ? mockApi.dailySummary() : http<DailySummary>('GET', '/summary/daily')),
+  insight: () => (usingMock ? mockApi.insight() : http<DailyInsight>('GET', '/summary/insight')),
   periodSummary: (from: Date, to: Date) =>
     usingMock
       ? mockApi.periodSummary(from, to)

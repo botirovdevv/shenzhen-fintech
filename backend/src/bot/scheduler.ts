@@ -7,6 +7,7 @@ import type { Db } from '../db/client';
 import { users } from '../db/schema';
 import { money } from '../lib/format';
 import { dailySummary } from '../rules/dailyAllowance';
+import { expoPush } from '../notify/notify';
 import { dailyReport, type Report } from './core';
 
 /** "HH:MM" in Tashkent (UTC+5) for an instant. */
@@ -14,13 +15,7 @@ export function tashkentClock(at: Date): string {
   return new Date(at.getTime() + 5 * 3_600_000).toISOString().slice(11, 16);
 }
 
-async function push(token: string, title: string, body: string) {
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ to: token, title, body, sound: 'default' }),
-  });
-}
+const push = expoPush;
 
 /** Sends every report due at `at`. Exported for tests; returns who got one. */
 export async function runDueReports(

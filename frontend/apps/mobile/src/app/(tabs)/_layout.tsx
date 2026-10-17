@@ -47,7 +47,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
       <Tabs.Screen name="add" options={{ title: 'Add', tabBarIcon: tabIcon('plusCircle') }} />
-      <Tabs.Screen name="assistant" options={{ title: 'Assistant', tabBarIcon: tabIcon('sparkle') }} />
+      <Tabs.Screen name="assistant" options={{ title: 'Assistant', tabBarIcon: tabIcon('chat') }} />
       <Tabs.Screen
         name="activity"
         options={{

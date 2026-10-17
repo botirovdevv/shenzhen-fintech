@@ -164,7 +164,7 @@ export default function Login() {
                     Yandex Go
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: 0.85 }}>
-                    <Icon name="sparkleSmall" size={12} color="#FFFFFF" strokeWidth={2.4} />
+                    <Icon name="check" size={12} color="#FFFFFF" strokeWidth={2.4} />
                     <Text variant="caption" color="#FFFFFF">
                       Sorted as Transport
                     </Text>

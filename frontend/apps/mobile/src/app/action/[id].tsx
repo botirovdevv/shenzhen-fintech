@@ -103,7 +103,7 @@ export default function ActionSheet() {
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Icon name="sparkleSmall" size={13} color={c.secondary} strokeWidth={2.2} />
+          <Icon name="bot" size={13} color={c.secondary} strokeWidth={2.2} />
           <Text variant="footnote" color="secondary">
             Agent · {p?.level ?? 'L2'}
           </Text>

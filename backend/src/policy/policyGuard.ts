@@ -24,6 +24,7 @@ export const TOOL_RULES = {
     args: z.object({ from: isoDate.optional(), to: isoDate.optional(), category: category.optional(), limit: z.number().int().min(1).max(100).optional() }),
   },
   get_daily_summary: { minLevel: 'L0', scope: 'read_transactions', args: z.object({ date: isoDate.optional() }) },
+  get_month_plan: { minLevel: 'L0', scope: 'read_transactions', args: z.object({}) },
   simulate_saving: {
     minLevel: 'L1',
     args: z.object({

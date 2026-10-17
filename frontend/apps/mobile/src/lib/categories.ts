@@ -19,7 +19,7 @@ export const sourceIcon: Record<TransactionSource, IconName> = {
   manual: 'pen',
   voice: 'mic',
   sms_forward: 'send',
-  agent: 'sparkleSmall',
+  agent: 'bot',
   card: 'card',
 };
 

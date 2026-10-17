@@ -3,6 +3,7 @@
 import {
   categorize,
   convertMoney,
+  formatMoney,
   levelLimits,
   toMinor,
   type Account,
@@ -16,6 +17,7 @@ import {
   type ChatResponse,
   type ConnectBankBody,
   type CreateTransactionBody,
+  type DailyInsight,
   type DailySummary,
   type DepositBody,
   type LoginBody,
@@ -111,7 +113,7 @@ function seed(): Db {
   const card = 'acc_card';
   const tx: Transaction[] = [];
   const add = (t: Omit<Transaction, 'id'>) => tx.push({ id: newId('tx'), ...t });
-  const lunches = ['Lunch, Rayhon', 'Osh markazi', 'Evos', 'Korzinka', 'Bazaar'];
+  const lunches = ['Lunch, Rayhon', 'Plov Center', 'Evos', 'Korzinka', 'Bazaar'];
 
   for (let day = 13; day >= 1; day--) {
     add({
@@ -305,7 +307,7 @@ const db: Db = seed();
 const MOCK_PAN = '4111111289144142';
 
 // Stand-in for Groq Whisper: the demo phrases from PLAN.md §15.
-const VOICE_SAMPLES = ['Bozorga qirq besh ming ishlatdim', 'Taksiga yigirma ming berdim', "Dorixonaga o'ttiz besh ming"];
+const VOICE_SAMPLES = ['Groceries at the bazaar 45k', 'Taxi home 20k', 'Pharmacy 35k'];
 let voiceTurn = 0;
 
 function log(entry: Omit<AuditEntry, 'id' | 'createdAt' | 'permissionLevel'>) {
@@ -592,6 +594,41 @@ export const mockApi = {
   async dailySummary(): Promise<DailySummary> {
     await delay(120);
     return dailySummary();
+  },
+  /** A simplified check-in for the offline demo: today against the allowance, no month history. */
+  async insight(): Promise<DailyInsight> {
+    await delay(120);
+    const s = dailySummary();
+    const over = s.todaySpent > s.dailyAllowance;
+    const fmt = (n: number) => formatMoney(n, db.user.currency);
+    const first = db.user.name.split(' ')[0];
+    const days = daysInMonth();
+    const dayOfMonth = new Date().getDate();
+    const overPct = over && s.dailyAllowance > 0 ? Math.round((s.todaySpent / s.dailyAllowance - 1) * 100) : 0;
+    return {
+      status: over ? 'over' : 'on_track',
+      headline: over
+        ? `Hey ${first}, today you spent ${overPct}% more than your daily plan.`
+        : `Nice, ${first}: you’re ${fmt(s.remainingToday)} under today’s plan.`,
+      body: over
+        ? 'Bring lunch from home and walk short trips for the next few days to get back on plan.'
+        : 'Keep it up: every unspent sum can go to Savings tonight.',
+      tips: [],
+      plan: {
+        date: s.date,
+        dailyAllowance: s.dailyAllowance,
+        todaySpent: s.todaySpent,
+        todayOverPct: overPct,
+        monthBudget: s.dailyAllowance * days,
+        monthSpent: s.todaySpent,
+        plannedToDate: s.dailyAllowance * dayOfMonth,
+        dayOfMonth,
+        daysLeft: days - dayOfMonth,
+        catchUpDaily: s.dailyAllowance,
+        cutPerDay: 0,
+        categoryTrends: [],
+      },
+    };
   },
   async periodSummary(from: Date, to: Date): Promise<PeriodSummary> {
     await delay(150);

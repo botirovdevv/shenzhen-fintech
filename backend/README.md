@@ -75,7 +75,7 @@ bot says voice is off.
 
 - Link: the app's Settings → Telegram bot → Get a link code → `/start 123456` (or the Open in Telegram
   button). Codes live 10 minutes; 5 tries per chat per 10 minutes.
-- Text like `taxi 20000` / `osh 35 ming` adds an expense. A forwarded Uzcard / Humo SMS is parsed
+- Text like `taxi 20000` / `lunch 35k` adds an expense. A forwarded Uzcard / Humo SMS is parsed
   (`rules/smsParser.ts`) and added from the card with `source: 'sms_forward'`.
 - A voice note (≤ 60 s) goes through Groq Whisper and is added like typed text, with `source: 'voice'`.
 - `/today` sends the report. At each user's `report_time` the scheduler sends it to Telegram (and

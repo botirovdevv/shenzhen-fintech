@@ -192,3 +192,18 @@ export const cardAuthorizations = pgTable(
   },
   (t) => [index('card_auth_user_time_idx').on(t.userId, t.createdAt)],
 );
+
+// Proactive spending alerts already sent, so each fires once per day / category-week.
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: text('id').primaryKey(),
+    userId: userRef(),
+    kind: text('kind').$type<'day_over' | 'category_up'>().notNull(),
+    key: text('key').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('alerts_user_kind_key_idx').on(t.userId, t.kind, t.key)],
+);

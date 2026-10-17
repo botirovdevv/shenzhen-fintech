@@ -21,6 +21,7 @@ export const keys = {
   accounts: ['accounts'] as const,
   transactions: ['transactions'] as const,
   daily: ['summary', 'daily'] as const,
+  insight: ['summary', 'insight'] as const,
   period: (from: string, to: string) => ['summary', 'period', from, to] as const,
   recommendations: ['recommendations'] as const,
   actions: (status?: string) => ['actions', status ?? 'all'] as const,
@@ -34,8 +35,10 @@ export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
 export const useAccounts = () => useQuery({ queryKey: keys.accounts, queryFn: api.accounts });
 export const useTransactions = () => useQuery({ queryKey: keys.transactions, queryFn: () => api.transactions(50) });
 export const useDailySummary = () => useQuery({ queryKey: keys.daily, queryFn: api.dailySummary });
-export const usePeriodSummary = (from: Date, to: Date) =>
-  useQuery({ queryKey: keys.period(from.toDateString(), to.toDateString()), queryFn: () => api.periodSummary(from, to) });
+// Until the server has /summary/insight it answers 404; the screens then just leave the check-in out.
+export const useInsight = () => useQuery({ queryKey: keys.insight, queryFn: api.insight, retry: false });
+export const usePeriodSummary = (from: Date, to: Date, enabled = true) =>
+  useQuery({ queryKey: keys.period(from.toDateString(), to.toDateString()), queryFn: () => api.periodSummary(from, to), enabled });
 export const useRecommendations = () => useQuery({ queryKey: keys.recommendations, queryFn: api.recommendations });
 export const useActions = (status?: AgentAction['status']) =>
   useQuery({ queryKey: keys.actions(status), queryFn: () => api.actions(status), refetchInterval: 30_000 });
@@ -49,9 +52,17 @@ function useInvalidateMoney() {
   const qc = useQueryClient();
   return () =>
     Promise.all(
-      [keys.accounts, keys.transactions, keys.daily, ['actions'], keys.audit, keys.permissions, keys.recommendations, ['summary'], keys.card].map(
-        (k) => qc.invalidateQueries({ queryKey: k }),
-      ),
+      [
+        keys.accounts,
+        keys.transactions,
+        keys.daily,
+        ['actions'],
+        keys.audit,
+        keys.permissions,
+        keys.recommendations,
+        ['summary'],
+        keys.card,
+      ].map((k) => qc.invalidateQueries({ queryKey: k })),
     );
 }
 
