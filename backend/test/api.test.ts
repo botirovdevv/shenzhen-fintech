@@ -1,4 +1,4 @@
-import type { Account, AgentAction, AuditEntry, ChatResponse, DailySummary, Page, Permissions, Recommendation, Transaction, User } from '@femate/shared';
+import type { Account, AgentAction, AuditEntry, ChatResponse, DailySummary, MoneyResponse, Page, Permissions, Recommendation, Transaction, User } from '@femate/shared';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -39,13 +39,52 @@ describe('auth and basics', () => {
     expect((await t.call<User>('GET', '/me')).body).toMatchObject({ name: 'Aziz', monthlyIncome: 4_000_000 });
   });
 
-  it('new user: connect bank opens sandbox accounts and sets limits to the level maximum', async () => {
+  it('new user: connect bank opens empty accounts with no history and sets limits to the level maximum', async () => {
     const reg = await t.app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: 'b@x.uz', password: 'secret1', name: 'B' } });
     const auth = { authorization: `Bearer ${reg.json<{ token: string }>().token}` };
     const res = await t.app.inject({ method: 'POST', url: '/api/v1/bank/connect', headers: auth, payload: { scopes: ['read_balance', 'transfer_own'], level: 'L3' } });
-    expect(res.json<{ accounts: Account[] }>().accounts.map((a) => a.type).sort()).toEqual(['card', 'cash', 'savings']);
-    const p = await t.app.inject({ url: '/api/v1/permissions', headers: auth });
+    const accs = res.json<{ accounts: Account[] }>().accounts;
+    expect(accs.map((a) => a.type).sort()).toEqual(['card', 'cash', 'savings']);
+    expect(accs.every((a) => a.balance === 0)).toBe(true);
+    const txs = await t.app.inject({ url: '/api/v1/transactions', headers: auth });
+    expect(txs.json<{ items: Transaction[] }>().items).toEqual([]);
+    const p =await t.app.inject({ url: '/api/v1/permissions', headers: auth });
     expect(p.json()).toEqual({ level: 'L3', scopes: ['read_balance', 'transfer_own'], perActionLimit: 50_000, dailyLimit: 100_000, agentEnabled: true });
+  });
+
+  it('new user: starting balances, top-up, ATM withdrawal and moves between own accounts', async () => {
+    const reg = await t.app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: 'm@x.uz', password: 'secret1', name: 'M' } });
+    const headers = { authorization: `Bearer ${reg.json<{ token: string }>().token}` };
+    const call = async (method: 'POST' | 'PUT', url: string, payload: object) => {
+      const res = await t.app.inject({ method, url: `/api/v1${url}`, headers, payload });
+      return { status: res.statusCode, body: res.json<MoneyResponse & { error?: { code: string } }>() };
+    };
+    const bal = (r: { body: MoneyResponse }) => Object.fromEntries(r.body.accounts.map((a) => [a.type, a.balance]));
+    await t.app.inject({ method: 'POST', url: '/api/v1/bank/connect', headers, payload: { scopes: ['read_balance'], level: 'L1' } });
+
+    const start = await call('PUT', '/accounts/balance', { account: 'cash', balance: 200_000 });
+    expect(start.body.transaction).toMatchObject({ description: 'Starting balance', direction: 'in', amount: 200_000, category: 'transfer' });
+    expect((await call('PUT', '/accounts/balance', { account: 'cash', balance: 200_000 })).body.transaction).toBeNull();
+    const fix = await call('PUT', '/accounts/balance', { account: 'cash', balance: 150_000 });
+    expect(fix.body.transaction).toMatchObject({ description: 'Balance correction', direction: 'out', amount: 50_000 });
+
+    const top = await call('POST', '/accounts/deposit', { to: 'card', amount: 1_000_000 });
+    expect(top.body.transaction).toMatchObject({ description: 'Card top-up', direction: 'in' });
+    expect(bal(top)).toEqual({ card: 1_000_000, savings: 0, cash: 150_000 });
+
+    const atm = await call('POST', '/accounts/transfer', { from: 'card', to: 'cash', amount: 300_000 });
+    expect(atm.body.transaction).toMatchObject({ description: 'ATM withdrawal', direction: 'out' });
+    expect(bal(atm)).toEqual({ card: 700_000, savings: 0, cash: 450_000 });
+
+    expect((await call('POST', '/accounts/transfer', { from: 'savings', to: 'card', amount: 1 })).body.error?.code).toBe('INSUFFICIENT_FUNDS');
+    expect((await call('POST', '/accounts/transfer', { from: 'card', to: 'card', amount: 1 })).status).toBe(400);
+    expect((await call('POST', '/accounts/deposit', { to: 'card', amount: -5 })).status).toBe(400);
+    await call('POST', '/accounts/transfer', { from: 'card', to: 'savings', amount: 200_000 });
+    expect(bal(await call('POST', '/accounts/transfer', { from: 'savings', to: 'card', amount: 50_000 }))).toEqual({ card: 550_000, savings: 150_000, cash: 450_000 });
+
+    // None of it is spending.
+    const day = await t.app.inject({ url: '/api/v1/summary/daily', headers });
+    expect(day.json<{ todaySpent: number }>().todaySpent).toBe(0);
   });
 
   it('transactions: structured + text, pagination, validation errors', async () => {

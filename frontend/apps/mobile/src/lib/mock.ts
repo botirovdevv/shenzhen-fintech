@@ -17,7 +17,9 @@ import {
   type ConnectBankBody,
   type CreateTransactionBody,
   type DailySummary,
+  type DepositBody,
   type LoginBody,
+  type MoneyResponse,
   type Page,
   type PeriodSummary,
   type PaymentCard,
@@ -26,11 +28,13 @@ import {
   type PolicyErrorCode,
   type Recommendation,
   type RegisterBody,
+  type SetBalanceBody,
   type SimulateBody,
   type SimulatePurchaseBody,
   type SimulatePurchaseResponse,
   type SimulateResponse,
   type Transaction,
+  type TransferBody,
   type UpdateCardBody,
   type UpdateMeBody,
   type UpdatePermissionsBody,
@@ -314,6 +318,32 @@ function account(type: Account['type']): Account {
   return a;
 }
 
+const DEPOSIT_TEXT: Record<Account['type'], string> = { card: 'Card top-up', cash: 'Cash received', savings: 'Added to Savings' };
+const MOVE_TEXT: Record<string, string> = {
+  'card>cash': 'ATM withdrawal',
+  'card>savings': 'Moved to Savings',
+  'cash>card': 'Cash deposited to card',
+  'cash>savings': 'Cash put into Savings',
+  'savings>card': 'From Savings to card',
+  'savings>cash': 'Cash taken from Savings',
+};
+
+/** A user money move, recorded as a 'transfer' so it never counts as spending. Same rows as the API. */
+function moneyRow(a: Account, amount: number, direction: Transaction['direction'], description: string): MoneyResponse {
+  const t: Transaction = {
+    id: newId('tx'),
+    accountId: a.id,
+    amount,
+    direction,
+    category: 'transfer',
+    description,
+    source: 'manual',
+    occurredAt: new Date().toISOString(),
+  };
+  db.transactions.unshift(t);
+  return { accounts: db.accounts.map((x) => ({ ...x })), transaction: t };
+}
+
 function expirePending() {
   const now = Date.now();
   for (const a of db.actions) {
@@ -489,6 +519,38 @@ export const mockApi = {
   async accounts(): Promise<Account[]> {
     await delay(120);
     return db.accounts.map((a) => ({ ...a }));
+  },
+  async deposit(body: DepositBody): Promise<MoneyResponse> {
+    await delay(400);
+    if (!Number.isInteger(body.amount) || body.amount <= 0) throw new ApiError('INVALID_ARGS', 'Enter an amount above zero.');
+    const a = account(body.to);
+    a.balance += body.amount;
+    const r = moneyRow(a, body.amount, 'in', body.description?.trim() || DEPOSIT_TEXT[body.to]);
+    log({ actor: 'user', event: 'money.deposit', decision: 'info', reason: `${r.transaction!.description} to ${body.to}.` });
+    return r;
+  },
+  async transfer(body: TransferBody): Promise<MoneyResponse> {
+    await delay(400);
+    if (body.from === body.to) throw new ApiError('INVALID_ARGS', 'Pick two different accounts.');
+    if (!Number.isInteger(body.amount) || body.amount <= 0) throw new ApiError('INVALID_ARGS', 'Enter an amount above zero.');
+    const from = account(body.from);
+    if (from.balance < body.amount) throw new ApiError('INSUFFICIENT_FUNDS', `There isn’t enough in ${from.name}.`);
+    from.balance -= body.amount;
+    account(body.to).balance += body.amount;
+    const r = moneyRow(from, body.amount, 'out', MOVE_TEXT[`${body.from}>${body.to}`]!);
+    log({ actor: 'user', event: 'money.transfer', decision: 'info', reason: `${r.transaction!.description}: ${body.from} to ${body.to}.` });
+    return r;
+  },
+  async setBalance(body: SetBalanceBody): Promise<MoneyResponse> {
+    await delay(400);
+    const a = account(body.account);
+    const delta = body.balance - a.balance;
+    if (delta === 0) return { accounts: db.accounts.map((x) => ({ ...x })), transaction: null };
+    const first = !db.transactions.some((t) => t.accountId === a.id);
+    a.balance = body.balance;
+    const r = moneyRow(a, Math.abs(delta), delta > 0 ? 'in' : 'out', first ? 'Starting balance' : 'Balance correction');
+    log({ actor: 'user', event: 'money.balance', decision: 'info', reason: `${r.transaction!.description}: ${body.account}.` });
+    return r;
   },
   async transactions(limit = 50): Promise<Page<Transaction>> {
     await delay(150);
@@ -736,7 +798,12 @@ export const mockApi = {
     if (!db.card) throw new ApiError('NO_CARD', 'You don’t have a FeMate card yet.');
     db.card = { ...db.card, ...body };
     if (body.frozen !== undefined) {
-      log({ actor: 'user', event: 'card.update', decision: 'info', reason: `Visa ·· ${db.card.lastFour}: ${body.frozen ? 'frozen' : 'unfrozen'}.` });
+      log({
+        actor: 'user',
+        event: 'card.update',
+        decision: 'info',
+        reason: `Visa ·· ${db.card.lastFour}: ${body.frozen ? 'frozen' : 'unfrozen'}.`,
+      });
     }
     return { ...db.card };
   },

@@ -50,6 +50,17 @@ export default function RootLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="transactions" />
           <Stack.Screen name="card" />
+          <Stack.Screen name="balances" />
+          <Stack.Screen
+            name="money"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.92],
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 28,
+              contentStyle: { backgroundColor: c.sheet },
+            }}
+          />
           <Stack.Screen
             name="action/[id]"
             options={{

@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Icon, type IconName } from '@/components/Icon';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Screen } from '@/components/Screen';
-import { Banner, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
+import { Banner, Button, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } from '@/components/ui';
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
 import { useCurrency } from '@/lib/currency';
 import { categoryLabel, formatAmount, formatMoney, formatTime, greeting } from '@/lib/format';
@@ -38,6 +38,8 @@ export default function Home() {
   }, [txs.data]);
 
   const total = (accounts.data ?? []).reduce((s, a) => s + a.balance, 0);
+  const noMoneyYet = !!accounts.data && accounts.data.every((a) => a.balance === 0) && txs.data?.items.length === 0;
+  const cashBelowZero = (accounts.data?.find((a) => a.type === 'cash')?.balance ?? 0) < 0;
   const s = summary.data;
   const spentRatio = s ? s.todaySpent / Math.max(1, s.dailyAllowance) : 0;
   const over = s ? s.remainingToday < 0 : false;
@@ -92,6 +94,24 @@ export default function Home() {
           }
           subtitle="Waiting for your approval"
           onPress={() => router.push({ pathname: '/action/[id]', params: { id: firstPending.id } })}
+        />
+      ) : null}
+
+      {noMoneyYet ? (
+        <Banner
+          tone="success"
+          icon="wallet"
+          title="Add the money you have"
+          subtitle="Your card, cash and savings start at zero. Tap to enter what you really have."
+          onPress={() => router.push('/balances')}
+        />
+      ) : cashBelowZero ? (
+        <Banner
+          tone="warn"
+          icon="cash"
+          title="Your cash is below zero"
+          subtitle="You recorded more cash spending than you had. Tap to set what’s in your wallet."
+          onPress={() => router.push({ pathname: '/money', params: { mode: 'set', account: 'cash' } })}
         />
       ) : null}
 
@@ -200,6 +220,36 @@ export default function Home() {
             );
           })}
         </View>
+        {/* Button's style lands inside its Pressable, so a wrapper takes the row's space. */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Add money"
+              icon="plus"
+              size="small"
+              variant="tinted"
+              onPress={() => router.push({ pathname: '/money', params: { mode: 'add' } })}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Move"
+              icon="transfer"
+              size="small"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/money', params: { mode: 'move' } })}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Fix cash"
+              icon="tune"
+              size="small"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/money', params: { mode: 'set', account: 'cash' } })}
+            />
+          </View>
+        </View>
       </Card>
 
       <Card style={{ gap: 14 }}>
@@ -270,7 +320,14 @@ export default function Home() {
         ) : null}
         {(txs.data?.items ?? []).slice(0, 6).map((t) => (
           <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 20 }}>
-            <IconTile name={categoryIcon[t.category]} bg={c.fill} fg={c.label} size={40} iconSize={20} rounded={20} />
+            <IconTile
+              name={categoryIcon[t.category]}
+              bg={t.category === 'transfer' ? c.accentTint : c.fill}
+              fg={t.category === 'transfer' ? c.accent : c.label}
+              size={40}
+              iconSize={20}
+              rounded={20}
+            />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="body" weight="500" numberOfLines={1}>
                 {t.description}
@@ -283,8 +340,9 @@ export default function Home() {
               </View>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 2 }}>
-              <Text variant="body" weight="600" tabular>
-                −{formatAmount(t.amount, cur)}
+              <Text variant="body" weight="600" tabular color={t.category === 'transfer' ? c.accent : c.label}>
+                {t.direction === 'in' ? '+' : t.category === 'transfer' ? '' : '−'}
+                {formatAmount(t.amount, cur)}
               </Text>
               {t.original ? (
                 <Text variant="footnote" color="secondary" tabular>

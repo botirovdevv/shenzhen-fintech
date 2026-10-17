@@ -96,4 +96,19 @@ describe('mock API rules (PLAN.md §8, §9)', () => {
     expect(res.transcript).toBe('Bozorga qirq besh ming ishlatdim');
     expect(res.transaction).toMatchObject({ amount: 45_000, category: 'food', source: 'voice' });
   });
+
+  it('tops up, moves between own accounts and corrects a balance, none of it as spending', async () => {
+    const { mockApi } = await fresh();
+    const bal = async () => Object.fromEntries((await mockApi.accounts()).map((a) => [a.type, a.balance]));
+    const before = await bal();
+    const spent = (await mockApi.dailySummary()).todaySpent;
+    await mockApi.deposit({ to: 'card', amount: 100_000 });
+    const atm = await mockApi.transfer({ from: 'card', to: 'cash', amount: 40_000 });
+    expect(atm.transaction).toMatchObject({ description: 'ATM withdrawal', category: 'transfer' });
+    expect(await bal()).toMatchObject({ card: before.card! + 60_000, cash: before.cash! + 40_000 });
+    await expect(mockApi.transfer({ from: 'cash', to: 'card', amount: 1e12 })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+    const fix = await mockApi.setBalance({ account: 'cash', balance: 10_000 });
+    expect(fix.transaction).toMatchObject({ description: 'Balance correction', direction: 'out' });
+    expect((await mockApi.dailySummary()).todaySpent).toBe(spent);
+  });
 });

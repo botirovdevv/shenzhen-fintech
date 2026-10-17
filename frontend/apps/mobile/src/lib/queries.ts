@@ -51,6 +51,21 @@ export function useCreateTransaction() {
   return useMutation({ mutationFn: (b: CreateTransactionBody) => api.createTransaction(b), onSuccess: invalidate });
 }
 
+export function useDeposit() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({ mutationFn: api.deposit, onSuccess: invalidate });
+}
+
+export function useTransfer() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({ mutationFn: api.transfer, onSuccess: invalidate });
+}
+
+export function useSetBalance() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({ mutationFn: api.setBalance, onSuccess: invalidate });
+}
+
 export function useVoiceTransaction() {
   const invalidate = useInvalidateMoney();
   return useMutation({ mutationFn: api.voiceTransaction, onSuccess: invalidate });

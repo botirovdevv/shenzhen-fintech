@@ -10,7 +10,7 @@ import { api, errorMessage } from '@/lib/api';
 import { categoryIcon } from '@/lib/categories';
 import { useCurrency } from '@/lib/currency';
 import { formatMoney, formatTime } from '@/lib/format';
-import { useCard, useCardAuthorizations, useIssueCard, useSimulatePurchase, useUpdateCard } from '@/lib/queries';
+import { useAccounts, useCard, useCardAuthorizations, useIssueCard, useSimulatePurchase, useUpdateCard } from '@/lib/queries';
 import { radius, useTheme } from '@/theme';
 
 // Test purchases for the sandbox card: amounts in UZS, shown in the user's currency.
@@ -188,6 +188,7 @@ export default function CardScreen() {
   const [last, setLast] = useState<CardAuthorization | null>(null);
 
   const card = status.data?.card ?? null;
+  const funding = useAccounts().data?.find((a) => a.id === card?.accountId);
 
   const reveal = async () => {
     if (details) return setDetails(null);
@@ -321,6 +322,24 @@ export default function CardScreen() {
               />
             </View>
           </View>
+
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="footnote" color="secondary" weight="500">
+                Available to spend
+              </Text>
+              <Text variant="title2" tabular>
+                {formatMoney(funding?.balance ?? 0, cur)}
+              </Text>
+            </View>
+            <Button
+              title="Top up"
+              icon="plus"
+              size="medium"
+              variant={(funding?.balance ?? 0) > 0 ? 'tinted' : 'primary'}
+              onPress={() => router.push({ pathname: '/money', params: { mode: 'add', to: 'card' } })}
+            />
+          </Card>
 
           <View>
             <SectionLabel>Rules</SectionLabel>

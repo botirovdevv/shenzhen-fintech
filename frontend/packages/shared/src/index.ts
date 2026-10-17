@@ -194,6 +194,35 @@ export interface ConnectBankBody {
   level: PermissionLevel;
 }
 
+// Money in and between the user's own accounts. Amounts are in the user's currency. All of them are
+// recorded as 'transfer' rows, so they never count as spending.
+
+/** Money from outside: a card top-up (sandbox: no real money moves), salary, cash received. */
+export interface DepositBody {
+  to: Account['type'];
+  amount: number;
+  description?: string;
+}
+
+/** Between the user's own accounts, e.g. an ATM withdrawal is card → cash. */
+export interface TransferBody {
+  from: Account['type'];
+  to: Account['type'];
+  amount: number;
+}
+
+/** What's really in the account ("I have 200 000 in cash"); the difference is recorded as an adjustment. */
+export interface SetBalanceBody {
+  account: Account['type'];
+  balance: number;
+}
+
+export interface MoneyResponse {
+  accounts: Account[];
+  /** Null when nothing changed (the balance was already right). */
+  transaction: Transaction | null;
+}
+
 /** `currency` defaults to the user's; another one is converted, and the entered amount kept as `original`. */
 export type CreateTransactionBody = { text: string } | { amount: number; category: Category; description: string; currency?: Currency };
 

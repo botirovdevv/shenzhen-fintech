@@ -56,7 +56,7 @@ export default function ConnectBank() {
       await queryClient.invalidateQueries();
       haptic('success');
       if (editing) router.back();
-      else router.replace('/(tabs)');
+      else router.replace('/balances');
     } catch (e) {
       setError(errorMessage(e));
     } finally {

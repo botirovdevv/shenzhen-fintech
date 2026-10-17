@@ -1,4 +1,4 @@
-import type { Account, PermissionLevel, Scope } from '@femate/shared';
+import type { Account, MoneyResponse, PermissionLevel, Scope } from '@femate/shared';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -6,14 +6,21 @@ import { z } from 'zod';
 import { audit } from '../audit/audit';
 import { userCurrency } from '../bank/currency';
 import { openSandboxAccounts, userAccounts } from '../bank/mockBank';
+import { deposit, moveMoney, setBalance } from '../bank/money';
 import { permissions } from '../db/schema';
-import { toAccount } from '../lib/serialize';
+import { toAccount, toTransaction } from '../lib/serialize';
 import { parse } from '../lib/validate';
 import { clampLimits } from '../policy/limits';
 
 export const scopeSchema = z.enum(['read_balance', 'read_transactions', 'transfer_own'] satisfies Scope[]);
 export const levelSchema = z.enum(['L0', 'L1', 'L2', 'L3'] satisfies PermissionLevel[]);
 const connectBody = z.object({ scopes: z.array(scopeSchema).max(3), level: levelSchema });
+const accountType = z.enum(['card', 'savings', 'cash']);
+// Up to 10 billion minor units in one go, so a typo can't make a balance absurd.
+const amount = z.number().int().positive().max(10_000_000_000);
+const depositBody = z.object({ to: accountType, amount, description: z.string().trim().max(100).optional() });
+const transferBody = z.object({ from: accountType, to: accountType, amount });
+const balanceBody = z.object({ account: accountType, balance: z.number().int().min(0).max(10_000_000_000) });
 
 export async function bankRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -45,5 +52,26 @@ export async function bankRoutes(app: FastifyInstance) {
   });
 
   app.get('/accounts', async (req): Promise<Account[]> => (await userAccounts(db, req.userId)).map(toAccount));
+
+  // The user's own money moves (the agent can't call these). Each answers with the new balances.
+  const done = async (userId: string, t: Parameters<typeof toTransaction>[0] | null): Promise<MoneyResponse> => ({
+    accounts: (await userAccounts(db, userId)).map(toAccount),
+    transaction: t ? toTransaction(t) : null,
+  });
+
+  app.post('/accounts/deposit', async (req) => {
+    const b = parse(depositBody, req.body);
+    return done(req.userId, await deposit(db, req.userId, b.to, b.amount, b.description));
+  });
+
+  app.post('/accounts/transfer', async (req) => {
+    const b = parse(transferBody, req.body);
+    return done(req.userId, await moveMoney(db, req.userId, b.from, b.to, b.amount));
+  });
+
+  app.put('/accounts/balance', async (req) => {
+    const b = parse(balanceBody, req.body);
+    return done(req.userId, await setBalance(db, req.userId, b.account, b.balance));
+  });
 }
 

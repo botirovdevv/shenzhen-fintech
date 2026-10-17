@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 
 import { audit } from '../audit/audit';
-import { openSandboxAccounts } from '../bank/mockBank';
+import { openSandboxAccounts, seedDemoHistory } from '../bank/mockBank';
 import type { Db } from './client';
 import { permissions, users } from './schema';
 
@@ -34,7 +34,9 @@ export async function resetDemo(db: Db) {
     dailyLimit: 300_000,
     agentEnabled: true,
   });
-  await openSandboxAccounts(db, DEMO.id, { card: 'acc_aziz_card', savings: 'acc_aziz_savings', cash: 'acc_aziz_cash' });
+  const ids = { card: 'acc_aziz_card', savings: 'acc_aziz_savings', cash: 'acc_aziz_cash' };
+  await openSandboxAccounts(db, DEMO.id, ids);
+  await seedDemoHistory(db, DEMO.id, ids);
   await audit(db, DEMO.id, {
     actor: 'user',
     event: 'bank.connect',

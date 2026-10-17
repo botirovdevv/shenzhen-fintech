@@ -1,7 +1,7 @@
 // Recommendation generator (PLAN.md §5 Stage 5): looks at the last 14 days; every number comes
 // from the Rules Engine, not the LLM. Regenerated at most once a day.
 import { fromUzs, niceStep, type AgentAction, type Currency, type Recommendation } from '@femate/shared';
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, ne } from 'drizzle-orm';
 
 import { audit } from '../audit/audit';
 import { userCurrency } from '../bank/currency';
@@ -78,7 +78,7 @@ export async function listRecommendations(db: Db, userId: string): Promise<Recom
   const rows = await db
     .select()
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.direction, 'out'), gte(transactions.occurredAt, dayStart(addDays(today, -13)))));
+    .where(and(eq(transactions.userId, userId), eq(transactions.direction, 'out'), ne(transactions.category, 'transfer'), gte(transactions.occurredAt, dayStart(addDays(today, -13)))));
   const built = buildRecommendations(
     rows.map((t) => ({ amount: t.amount, category: t.category, description: t.description, day: tashkentDate(t.occurredAt) })),
     daysInMonth(today),
