@@ -199,7 +199,7 @@ export const alerts = pgTable(
   {
     id: text('id').primaryKey(),
     userId: userRef(),
-    kind: text('kind').$type<'day_over' | 'category_up'>().notNull(),
+    kind: text('kind').$type<'day_over' | 'category_up' | 'anomaly'>().notNull(),
     key: text('key').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),

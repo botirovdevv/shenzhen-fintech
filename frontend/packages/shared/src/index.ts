@@ -296,7 +296,10 @@ export interface SimulateResponse {
   yearlySaving: number;
 }
 
-export type UpdatePermissionsBody = Partial<Pick<Permissions, 'level' | 'scopes' | 'perActionLimit' | 'dailyLimit'>>;
+/** `agentEnabled: true` is the only way back on after the kill switch, and then the level starts again at L1. */
+export type UpdatePermissionsBody = Partial<Pick<Permissions, 'level' | 'scopes' | 'perActionLimit' | 'dailyLimit'>> & {
+  agentEnabled?: true;
+};
 
 export type PolicyErrorCode =
   | 'KILL_SWITCH_ACTIVE'
@@ -311,7 +314,6 @@ export type PolicyErrorCode =
 export interface ApiErrorBody {
   error: { code: string; message: string };
 }
-
 
 // Currencies
 

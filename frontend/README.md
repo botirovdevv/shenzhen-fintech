@@ -23,13 +23,15 @@ pnpm dev:mobile:tunnel   # if the phone can't reach your computer on the LAN
 pnpm typecheck
 pnpm lint
 pnpm test                # Vitest: formatting, categorizer, policy rules of the mock API
-pnpm build:web           # static web build in apps/mobile/dist (Render static site)
+pnpm build:web           # static web build in apps/mobile/dist, pointed at the API in apps/mobile/.env
 ```
 
 Android APK: `cd apps/mobile && npx eas-cli@latest build -p android --profile preview` (needs an Expo
 account). Server push notifications need that build too; in Expo Go the app schedules a local daily
 report reminder instead.
 
-Without `EXPO_PUBLIC_API_URL` the app runs on a built-in mock API seeded with the demo user
-(aziz@femate.uz / demo1234), so it works before the backend is up. Set
-`EXPO_PUBLIC_API_URL=http://<your-ip>:3000/api/v1` in `apps/mobile/.env` to use the real backend.
+`apps/mobile/.env` points the app at the live API (`https://femate-api.usm0n.uz/api/v1`); the EAS build profiles in
+`eas.json` set the same URL. For a local backend put `EXPO_PUBLIC_API_URL=http://<your-ip>:3000/api/v1` in
+`apps/mobile/.env.development.local` (read first by `expo start`, ignored by git). Without any
+`EXPO_PUBLIC_API_URL` the app runs on a built-in mock API seeded with the demo user (aziz@femate.uz / demo1234);
+Settings then says *demo data (no server)*.

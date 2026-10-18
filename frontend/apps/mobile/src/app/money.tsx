@@ -8,7 +8,8 @@ import { Icon, type IconName } from '@/components/Icon';
 import { Button, Chip, haptic, IconTile, PressableScale, Segmented, Text } from '@/components/ui';
 import { errorMessage, usingMock } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
-import { formatAmount, formatMoney, formatWhole, parseAmountInput } from '@/lib/format';
+import { amountInputValue, formatAmount, formatMoney, parseAmountInput } from '@/lib/format';
+import { useKeyboardHeight } from '@/lib/useKeyboardHeight';
 import { useAccounts, useCard, useDeposit, useSetBalance, useTransfer } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
@@ -95,6 +96,7 @@ export default function MoneySheet() {
   const cur = useCurrency();
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const kb = useKeyboardHeight();
   const params = useLocalSearchParams<{ mode?: Mode; account?: AccountType; from?: AccountType; to?: AccountType }>();
   const accounts = useAccounts().data ?? [];
   const sandbox = useCard().data?.sandbox ?? true;
@@ -119,7 +121,7 @@ export default function MoneySheet() {
   // "Set balance" starts from what the app thinks is there (adjusting state during render, once).
   if (mode === 'set' && !loadedSet && accounts.length) {
     setLoadedSet(true);
-    setText(formatWhole(balanceOf(target), cur));
+    setText(amountInputValue(balanceOf(target), cur));
   }
 
   const busy = deposit.isPending || transfer.isPending || setBalance.isPending;
@@ -179,7 +181,7 @@ export default function MoneySheet() {
     <ScrollView
       keyboardShouldPersistTaps="handled"
       style={{ backgroundColor: c.sheet }}
-      contentContainerStyle={{ paddingTop: space.xl, paddingHorizontal: space.lg, paddingBottom: insets.bottom + 24, gap: space.lg }}
+      contentContainerStyle={{ paddingTop: space.xl, paddingHorizontal: space.lg, paddingBottom: insets.bottom + 24 + kb, gap: space.lg }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <IconTile
@@ -206,7 +208,7 @@ export default function MoneySheet() {
           setMode(m);
           setError(null);
           setNote(null);
-          if (m === 'set') setText(formatWhole(balanceOf(target), cur));
+          if (m === 'set') setText(amountInputValue(balanceOf(target), cur));
           else if (mode === 'set') setText('');
         }}
       />
@@ -260,7 +262,7 @@ export default function MoneySheet() {
             value={target}
             onChange={(t) => {
               setTarget(t);
-              setText(formatWhole(balanceOf(t), cur));
+              setText(amountInputValue(balanceOf(t), cur));
             }}
             accounts={accounts}
           />
@@ -308,13 +310,13 @@ export default function MoneySheet() {
           </Text>
         </View>
         {mode === 'move' ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text variant="footnote" color={tooMuch ? 'danger' : 'secondary'}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <Text variant="footnote" color={tooMuch ? 'danger' : 'secondary'} style={{ flex: 1 }}>
               {tooMuch ? 'More than you have in ' : 'Available in '}
               {nameOf(from)}: {formatMoney(balanceOf(from), cur)}
             </Text>
             {balanceOf(from) > 0 ? (
-              <Button title="All" size="small" variant="tinted" onPress={() => setText(formatWhole(balanceOf(from), cur))} />
+              <Button title="All" size="small" variant="tinted" onPress={() => setText(amountInputValue(balanceOf(from), cur))} />
             ) : null}
           </View>
         ) : null}

@@ -760,7 +760,11 @@ export const mockApi = {
   },
   async updatePermissions(body: UpdatePermissionsBody): Promise<Permissions> {
     await delay(300);
-    const level = body.level ?? db.permissions.level;
+    // Like the server: only an explicit agentEnabled: true turns the agent back on, and then at L1 at most.
+    const reEnable = !db.permissions.agentEnabled && body.agentEnabled === true;
+    const agentEnabled = db.permissions.agentEnabled || reEnable;
+    const wanted = body.level ?? db.permissions.level;
+    const level = reEnable && wanted !== 'L0' ? 'L1' : wanted;
     const max = levelLimits(level, db.user.currency);
     const cap = (v: number | undefined, fallback: number, limit?: number) => Math.min(v ?? fallback, limit ?? 0);
     db.permissions = {
@@ -768,9 +772,18 @@ export const mockApi = {
       scopes: body.scopes ?? db.permissions.scopes,
       perActionLimit: cap(body.perActionLimit, db.permissions.perActionLimit || (max?.perAction ?? 0), max?.perAction),
       dailyLimit: cap(body.dailyLimit, db.permissions.dailyLimit || (max?.daily ?? 0), max?.daily),
-      agentEnabled: true,
+      agentEnabled,
     };
-    log({ actor: 'user', event: 'permissions.update', decision: 'info', reason: `Agent enabled at ${level}.` });
+    log({
+      actor: 'user',
+      event: 'permissions.update',
+      decision: 'info',
+      reason: reEnable
+        ? `Agent re-enabled at ${level}.`
+        : agentEnabled
+          ? `Permissions updated: ${level}.`
+          : 'Permissions updated (agent still stopped).',
+    });
     return { ...db.permissions };
   },
   async killSwitch(): Promise<Permissions> {

@@ -1,7 +1,7 @@
 import Slider from '@react-native-community/slider';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
@@ -70,7 +70,7 @@ function WhatIfRow({
         onSlidingComplete={(v) => onDone(Math.round(v))}
         minimumTrackTintColor={c.accent}
         maximumTrackTintColor={c.fill2}
-        thumbTintColor="#FFFFFF"
+        thumbTintColor={Platform.OS === 'ios' ? '#FFFFFF' : c.accent}
         style={{ height: 36 }}
       />
     </View>
@@ -110,7 +110,8 @@ export default function Reports() {
   );
 
   const limit = period === 'week' ? allowance : allowance * 7;
-  const max = Math.max(limit * 1.25, ...bars.map((b) => b.amount), ...prevBars.map((b) => b.amount));
+  // At least 1, so a new account with no limit and no spending doesn't divide by zero.
+  const max = Math.max(1, limit * 1.25, ...bars.map((b) => b.amount), ...prevBars.map((b) => b.amount));
   const total = bars.reduce((s, b) => s + b.amount, 0);
   const prevTotal = (prevSummary.data?.byDay ?? []).reduce((s, d) => s + d.amount, 0);
   const delta = compare && prevSummary.data ? changePct(total, prevTotal) : null;
@@ -432,7 +433,14 @@ export default function Reports() {
           title="Make this a plan"
           icon="target"
           size="medium"
-          onPress={() => router.push('/assistant')}
+          onPress={() =>
+            router.navigate({
+              pathname: '/assistant',
+              params: {
+                ask: `Help me save on taxis: ${days} days a month by bus instead of taxi saves about ${formatMoney(monthly, cur)} a month. Make it a plan.`,
+              },
+            })
+          }
           style={{ borderRadius: 14, height: 48 }}
         />
       </Card>

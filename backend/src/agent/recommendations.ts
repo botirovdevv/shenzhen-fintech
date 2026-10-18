@@ -97,6 +97,8 @@ export async function applyRecommendation(db: Db, userId: string, id: string): P
     .from(recommendations)
     .where(and(eq(recommendations.id, id), eq(recommendations.userId, userId)));
   if (!rec) throw notFound('Recommendation');
+  // Applying twice (double tap, second device) must not propose the same transfer twice.
+  if (rec.status === 'applied') return {};
   await db.update(recommendations).set({ status: 'applied' }).where(eq(recommendations.id, id));
   await audit(db, userId, { actor: 'user', event: 'recommendation.apply', decision: 'info', reason: `Applied: ${rec.title}.`, details: { recommendationId: id } });
   if (rec.actionType && rec.actionPayload) {

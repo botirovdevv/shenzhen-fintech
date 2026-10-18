@@ -31,6 +31,12 @@ export function createBot(token: string, deps: { db: Db; llm: LlmProvider; stt: 
     for (const a of r.pending) await bot.api.sendMessage(chatId, describeAction(a, r.currency), { reply_markup: actionKeyboard(a) });
   }
 
+  // Only one-to-one chats: in a group anyone could tap Approve on a transfer.
+  bot.use(async (ctx, next) => {
+    if (ctx.chat && ctx.chat.type !== 'private') return;
+    await next();
+  });
+
   bot.command('start', async (ctx) => {
     const chatId = String(ctx.chat.id);
     const code = ctx.match.trim();

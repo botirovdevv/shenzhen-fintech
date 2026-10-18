@@ -1,11 +1,13 @@
 import { convertMoney, formatMoney, toMinor, type Category, type Currency, type TransactionSource } from '@femate/shared';
 import { eq, sql } from 'drizzle-orm';
 
+import { audit } from '../audit/audit';
 import type { Db } from '../db/client';
 import { checkSpendingAlerts } from '../notify/spendingAlerts';
 import { accounts, transactions } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
+import { MAX_AMOUNT, tooLarge } from '../lib/validate';
 import { userCurrency } from './currency';
 import { accountOfType } from './mockBank';
 
@@ -42,6 +44,7 @@ export async function addExpense(
   const foreign = currency && currency !== own ? currency : null;
   const amount = foreign ? convertMoney(e.amount, foreign, own) : e.amount;
   if (amount <= 0) throw new ApiError(400, 'INVALID_ARGS', 'That amount is too small to record.');
+  if (amount > MAX_AMOUNT) throw tooLarge();
   const t = await db.transaction(async (tx) => {
     await tx
       .update(accounts)
@@ -62,6 +65,16 @@ export async function addExpense(
       .returning();
     return t!;
   });
-  await checkSpendingAlerts(db, userId).catch(() => undefined); // an alert must never undo a recorded expense
+  // An expense the agent adds is already in the audit log through Policy Guard.
+  if (e.source !== 'agent') {
+    await audit(db, userId, {
+      actor: 'user',
+      event: `expense.${e.source}`,
+      decision: 'info',
+      reason: `Recorded ${spentText(t, own)} for ${e.category}: “${e.description}”.`,
+      details: { transactionId: t.id, amount: t.amount, category: e.category, source: e.source },
+    });
+  }
+  await checkSpendingAlerts(db, userId, t).catch(() => undefined); // an alert must never undo a recorded expense
   return t;
 }

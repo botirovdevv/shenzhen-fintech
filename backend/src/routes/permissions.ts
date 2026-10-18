@@ -9,7 +9,7 @@ import { userCurrency } from '../bank/currency';
 import { money } from '../lib/format';
 import { toPermissions } from '../lib/serialize';
 import { parse } from '../lib/validate';
-import { clampLimits } from '../policy/limits';
+import { clampLimits, LEVEL_RANK } from '../policy/limits';
 import { loadPermissions } from '../policy/policyGuard';
 import { levelSchema, scopeSchema } from './bank';
 
@@ -18,6 +18,7 @@ const putBody = z.object({
   scopes: z.array(scopeSchema).max(3).optional(),
   perActionLimit: z.number().int().min(0).optional(),
   dailyLimit: z.number().int().min(0).optional(),
+  agentEnabled: z.literal(true).optional(),
 });
 
 export async function permissionRoutes(app: FastifyInstance) {
@@ -25,19 +26,23 @@ export async function permissionRoutes(app: FastifyInstance) {
 
   app.get('/permissions', async (req): Promise<Permissions> => loadPermissions(db, req.userId));
 
-  // Also how the agent is switched back on after the kill switch.
+  // Also how the agent is switched back on after the kill switch: only with an explicit agentEnabled: true,
+  // and then from L1 at most (PLAN.md §8). Editing limits while it is stopped keeps it stopped.
   app.put('/permissions', async (req): Promise<Permissions> => {
     const b = parse(putBody, req.body);
     const cur = await loadPermissions(db, req.userId);
-    const level = b.level ?? cur.level;
+    const reEnable = !cur.agentEnabled && b.agentEnabled === true;
+    const agentEnabled = cur.agentEnabled || reEnable;
+    const wanted = b.level ?? cur.level;
+    const level = reEnable && LEVEL_RANK[wanted] > LEVEL_RANK.L1 ? 'L1' : wanted;
     // Limits carry over only within the same level; a new level starts from its system maximum.
     const currency = await userCurrency(db, req.userId);
     const limits = clampLimits(level, currency, b, level === cur.level ? cur : undefined);
     const scopes = b.scopes ? [...new Set(b.scopes)] : cur.scopes;
     const [row] = await db
       .insert(permissions)
-      .values({ userId: req.userId, level, scopes, ...limits, agentEnabled: true })
-      .onConflictDoUpdate({ target: permissions.userId, set: { level, scopes, ...limits, agentEnabled: true, updatedAt: sql`now()` } })
+      .values({ userId: req.userId, level, scopes, ...limits, agentEnabled })
+      .onConflictDoUpdate({ target: permissions.userId, set: { level, scopes, ...limits, agentEnabled, updatedAt: sql`now()` } })
       .returning();
     const p = toPermissions(row!);
     const capped = (b.perActionLimit !== undefined && b.perActionLimit > p.perActionLimit) || (b.dailyLimit !== undefined && b.dailyLimit > p.dailyLimit);
@@ -45,7 +50,7 @@ export async function permissionRoutes(app: FastifyInstance) {
       actor: 'user',
       event: 'permissions.update',
       decision: 'info',
-      reason: `${cur.agentEnabled ? 'Permissions updated' : 'Agent re-enabled'}: ${level}, ${money(p.perActionLimit, currency)} per action, ${money(p.dailyLimit, currency)} a day${capped ? ' (capped at the system maximum)' : ''}.`,
+      reason: `${reEnable ? 'Agent re-enabled' : agentEnabled ? 'Permissions updated' : 'Permissions updated (agent still stopped)'}: ${level}, ${money(p.perActionLimit, currency)} per action, ${money(p.dailyLimit, currency)} a day${capped ? ' (capped at the system maximum)' : ''}.`,
       details: { before: cur, after: p },
       level,
     });

@@ -27,7 +27,18 @@ export default function Register() {
   const passwordOk = isAcceptablePassword(password);
 
   const submit = async () => {
+    if (busy) return; // the keyboard's Go key and the button can both fire
     setError(null);
+    if (!name.trim()) {
+      haptic('warning');
+      setError('Enter your name.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      haptic('warning');
+      setError('Enter a valid email, like you@example.com.');
+      return;
+    }
     if (!passwordOk) {
       haptic('warning');
       setError(`Choose a stronger password. ${strength.hint || `Use at least 8 characters.`}`);
@@ -35,7 +46,7 @@ export default function Register() {
     }
     setBusy(true);
     try {
-      const res = await api.register({ name, email, password });
+      const res = await api.register({ name: name.trim(), email: email.trim(), password });
       await signIn(res.token);
       haptic('success');
       router.replace('/appearance');

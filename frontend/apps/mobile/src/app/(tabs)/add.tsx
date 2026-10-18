@@ -1,6 +1,7 @@
 import { categorize, convertMoney, toMinor, type Category, type Transaction } from '@femate/shared';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/Icon';
@@ -68,6 +69,22 @@ export default function Add() {
     },
     [],
   );
+  // Tabs stay mounted: leaving the tab mid-recording drops the recording instead of keeping the mic on.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (stopTimer.current) clearTimeout(stopTimer.current);
+        stopTimer.current = null;
+        if (recorder.isRecording) {
+          void recorder
+            .stop()
+            .then(() => setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }))
+            .catch(() => undefined);
+        }
+      },
+      [recorder],
+    ),
+  );
 
   // Live preview only; the server does the real categorisation when we send { text }.
   const parsed = categorize(text);
@@ -88,13 +105,15 @@ export default function Add() {
   };
 
   const save = async () => {
-    if (parsed.amount === null) return;
+    // The keyboard's Done key and the button can both fire; one expense is saved once.
+    if (parsed.amount === null || create.isPending || saved) return;
     setError(null);
     try {
-      const tx = await create.mutateAsync(
-        override ? { amount: enteredMinor, currency: entered, category, description: parsed.description } : { text },
-      );
+      const description = parsed.description.trim() || categoryLabel[category];
+      const tx = await create.mutateAsync(override ? { amount: enteredMinor, currency: entered, category, description } : { text });
       haptic('success');
+      setText('');
+      setOverride(null);
       setSaved({ tx });
     } catch (e) {
       setError(errorMessage(e));
@@ -126,8 +145,13 @@ export default function Add() {
     stopTimer.current = null;
     if (!recorder.isRecording) return;
     haptic('medium');
-    await recorder.stop();
-    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    try {
+      await recorder.stop();
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    } catch (e) {
+      setError(`Couldn’t stop the recording (${e instanceof Error ? e.message : String(e)}). Try again.`);
+      return;
+    }
     const uri = recorder.uri;
     if (!uri) {
       setError('The recording was empty. Try again.');
@@ -239,7 +263,7 @@ export default function Add() {
             </View>
           </View>
           <View style={{ gap: 2 }}>
-            <Text variant="largeTitle" tabular style={{ fontSize: 40, lineHeight: 46 }}>
+            <Text variant="largeTitle" tabular style={{ fontSize: 40, lineHeight: 46 }} numberOfLines={1} adjustsFontSizeToFit>
               {formatAmount(enteredMinor, entered)}{' '}
               <Text variant="title2" color="secondary">
                 {entered}
@@ -282,7 +306,7 @@ export default function Add() {
               <Text variant="footnote" color="secondary">
                 Paid from
               </Text>
-              <Text variant="callout" weight="600" tabular>
+              <Text variant="callout" weight="600" tabular numberOfLines={1}>
                 Cash · {formatAmount(cash?.balance ?? 0, cur)} left
               </Text>
             </View>

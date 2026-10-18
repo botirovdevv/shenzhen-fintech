@@ -103,6 +103,7 @@ export default function Login() {
   const heroHeight = typing ? insets.top + 76 : HERO_HEIGHT + insets.top;
 
   const submit = async () => {
+    if (busy) return; // the keyboard's Go key and the button can both fire
     setError(null);
     if (!email.trim() || !password) {
       haptic('warning');

@@ -7,3 +7,6 @@ dist/
 .expo/
 *.tsbuildinfo
 .DS_Store
+
+*.apk
+*.aab

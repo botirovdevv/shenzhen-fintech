@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { loadToken, saveToken } from '@/lib/auth';
+import { queryClient } from '@/lib/queryClient';
 
 interface SessionState {
   token: string | null;
@@ -17,12 +18,15 @@ export const useSession = create<SessionState>((set) => ({
     const token = await loadToken();
     set({ token, hydrated: true });
   },
+  // Both start from an empty cache, so one account never sees another account's balances for a moment.
   signIn: async (token) => {
     await saveToken(token);
+    queryClient.clear();
     set({ token });
   },
   signOut: async () => {
     await saveToken(null);
+    queryClient.clear();
     set({ token: null });
   },
 }));

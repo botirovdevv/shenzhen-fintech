@@ -37,7 +37,7 @@ export const TOOL_RULES = {
     minLevel: 'L1',
     args: z.object({ title: z.string().min(1).max(120), body: z.string().min(1).max(600), monthlySaving: z.number().int().min(0) }),
   },
-  add_expense: { minLevel: 'L2', args: z.object({ amount: money, category: category.exclude(['transfer']), description: z.string().min(1).max(200) }) },
+  add_expense: { minLevel: 'L2', args: z.object({ amount: money.max(1_000_000_000), category: category.exclude(['transfer']), description: z.string().min(1).max(200) }) },
   set_budget: { minLevel: 'L2', args: z.object({ category, monthlyLimit: money }) },
   transfer_to_savings: {
     minLevel: 'L2',

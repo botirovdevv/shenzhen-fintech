@@ -28,15 +28,19 @@ export async function authRoutes(app: FastifyInstance) {
     const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, b.email));
     if (taken) throw new ApiError(409, 'EMAIL_TAKEN', 'An account with this email already exists. Sign in instead.');
     const id = newId('usr');
+    const passwordHash = await bcrypt.hash(b.password, 10);
     const [u] = await db
       .insert(users)
-      .values({ id, email: b.email, name: b.name, passwordHash: await bcrypt.hash(b.password, 10) })
+      .values({ id, email: b.email, name: b.name, passwordHash })
+      .onConflictDoNothing({ target: users.email })
       .returning();
+    // Two sign-ups with the same email at once: the second one lands here.
+    if (!u) throw new ApiError(409, 'EMAIL_TAKEN', 'An account with this email already exists. Sign in instead.');
     // Until the bank is connected the agent can only read (L0) and has no scopes.
     await db.insert(permissions).values({ userId: id });
     await audit(db, id, { actor: 'user', event: 'auth.register', decision: 'info', reason: 'Account created. Agent starts at L0 (read-only).', level: 'L0' });
     reply.status(201);
-    return { token: app.jwt.sign({ sub: id }), user: toUser(u!) };
+    return { token: app.jwt.sign({ sub: id }), user: toUser(u) };
   });
 
   app.post('/auth/login', { config: authLimit }, async (req): Promise<AuthResponse> => {

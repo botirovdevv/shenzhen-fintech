@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { dailyInsight } from '../agent/insights';
-import { addDays, dayStart, tashkentDate } from '../lib/time';
+import { addDays, dayStart, rangeFrom, rangeTo, tashkentDate } from '../lib/time';
 import { parse } from '../lib/validate';
 import { dailySummary, periodSummary } from '../rules/dailyAllowance';
 
@@ -23,8 +23,8 @@ export async function summaryRoutes(app: FastifyInstance) {
 
   app.get('/summary/period', async (req): Promise<PeriodSummary> => {
     const q = parse(periodQuery, req.query);
-    const to = q.to ? new Date(q.to) : new Date();
-    const from = q.from ? new Date(q.from) : dayStart(addDays(tashkentDate(to), -6));
+    const to = q.to ? rangeTo(q.to) : new Date();
+    const from = q.from ? rangeFrom(q.from) : dayStart(addDays(tashkentDate(to), -6));
     return periodSummary(db, req.userId, from, to);
   });
 

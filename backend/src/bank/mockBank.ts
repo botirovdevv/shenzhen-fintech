@@ -4,7 +4,7 @@ import { fromUzs } from '@femate/shared';
 import { and, eq, gte, sql } from 'drizzle-orm';
 
 import type { Db } from '../db/client';
-import { accounts, transactions } from '../db/schema';
+import { accounts, permissions, transactions } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { addDays, tashkentDate, tashkentTime } from '../lib/time';
@@ -103,7 +103,7 @@ export async function accountOfType(db: Db, userId: string, type: 'card' | 'savi
 /** Sum of today's (Tashkent) executed agent transfers, for the daily limit. */
 export async function agentTransferredToday(db: Db, userId: string): Promise<number> {
   const [row] = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)::int` })
+    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)::bigint` })
     .from(transactions)
     .where(
       and(
@@ -126,6 +126,13 @@ export async function transferToSavings(db: Db, userId: string, fromId: string, 
     const from = own.find((a) => a.id === fromId && a.type === 'card');
     const to = own.find((a) => a.id === toId && a.type === 'savings');
     if (!from || !to) throw new ApiError(403, 'TARGET_NOT_ALLOWED', 'Money can only move from your card to your own savings.');
+    // Policy Guard checked the daily limit before; lock the user's permissions row and check again here, so two
+    // approvals at the same moment (app + Telegram) can't both pass it.
+    const [perm] = await tx.select().from(permissions).where(eq(permissions.userId, userId)).for('update');
+    if (!perm?.agentEnabled) throw new ApiError(403, 'KILL_SWITCH_ACTIVE', 'The agent is stopped by the kill switch.');
+    if ((await agentTransferredToday(tx, userId)) + amount > perm.dailyLimit) {
+      throw new ApiError(403, 'DAILY_LIMIT', 'This would pass your daily limit for agent transfers.');
+    }
     const debited = await tx
       .update(accounts)
       .set({ balance: sql`${accounts.balance} - ${amount}` })

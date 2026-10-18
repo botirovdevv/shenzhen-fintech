@@ -11,6 +11,7 @@ import { agentActions, budgets } from '../db/schema';
 import { ApiError, notFound } from '../lib/errors';
 import { money } from '../lib/format';
 import { newId } from '../lib/ids';
+import { MAX_AMOUNT } from '../lib/validate';
 import { toAction } from '../lib/serialize';
 import { PENDING_TTL_MS } from './limits';
 import { checkPolicy, type ActionTool, type ToolArgs } from './policyGuard';
@@ -55,7 +56,8 @@ export async function proposeAction(
     id: newId('act'),
     userId,
     type: tool,
-    amount: Number.isInteger(amount) ? amount : null,
+    // A wild amount from the LLM is still blocked and logged; it just isn't stored in the int4 column.
+    amount: Number.isInteger(amount) && amount > 0 && amount <= MAX_AMOUNT ? amount : null,
     createdAt: new Date(now),
   };
 
@@ -144,7 +146,10 @@ export async function approveAction(db: Db, userId: string, id: string): Promise
   const d = await checkPolicy(db, userId, a.type, a.payload);
   if (!d.allowed) {
     const reason = `${d.code}: ${d.message}`;
-    await db.update(agentActions).set({ status: 'blocked', reason, decidedAt: new Date() }).where(eq(agentActions.id, a.id));
+    await db
+      .update(agentActions)
+      .set({ status: 'blocked', reason, decidedAt: new Date() })
+      .where(and(eq(agentActions.id, a.id), eq(agentActions.status, 'pending')));
     await audit(db, userId, { actor: 'user', event: 'action.approve', decision: 'blocked', reason, details: { actionId: a.id } });
     throw new ApiError(403, d.code, d.message);
   }
@@ -176,8 +181,10 @@ export async function rejectAction(db: Db, userId: string, id: string): Promise<
   const [row] = await db
     .update(agentActions)
     .set({ status: 'rejected', decidedAt: new Date() })
-    .where(eq(agentActions.id, a.id))
+    .where(and(eq(agentActions.id, a.id), eq(agentActions.status, 'pending')))
     .returning();
+  // Approved on another device (or in Telegram) a moment ago: the money already moved.
+  if (!row) throw new ApiError(409, 'NOT_PENDING', 'This action was already decided.');
   await audit(db, userId, {
     actor: 'user',
     event: 'action.reject',
@@ -185,5 +192,5 @@ export async function rejectAction(db: Db, userId: string, id: string): Promise<
     reason: `Rejected: ${describe(a.type, a.payload, await userCurrency(db, userId))}. Nothing was changed.`,
     details: { actionId: a.id },
   });
-  return toAction(row!);
+  return toAction(row);
 }

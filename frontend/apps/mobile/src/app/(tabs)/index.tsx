@@ -1,4 +1,3 @@
-import type { Category } from '@femate/shared';
 import { Link, router, type Href } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
@@ -10,7 +9,8 @@ import { Banner, Card, ErrorRow, IconTile, PressableScale, ProgressBar, Text } f
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
 import { useCurrency } from '@/lib/currency';
 import { categoryLabel, formatAmount, formatMoney, formatTime, greeting } from '@/lib/format';
-import { useAccounts, useActions, useDailySummary, useInsight, useMe, useTransactions } from '@/lib/queries';
+import { periodRange } from '@/lib/period';
+import { useAccounts, useActions, useDailySummary, useInsight, useMe, usePeriodSummary, useTransactions } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
 
 // Home answers three questions in this order: how much can I still spend today, what should I do about it,
@@ -24,21 +24,23 @@ export default function Home() {
   const insight = useInsight();
   const txs = useTransactions();
   const pending = useActions('pending');
+  // This month's categories come from the server's totals, not from the last few transactions.
+  const month = useMemo(() => periodRange('month'), []);
+  const period = usePeriodSummary(month.from, month.to);
 
   const refreshing = accounts.isRefetching || summary.isRefetching || txs.isRefetching;
-  const refresh = () => void Promise.all([accounts.refetch(), summary.refetch(), txs.refetch(), pending.refetch(), insight.refetch()]);
+  const refresh = () =>
+    void Promise.all([accounts.refetch(), summary.refetch(), txs.refetch(), pending.refetch(), insight.refetch(), period.refetch()]);
 
-  const monthByCategory = useMemo(() => {
-    const start = new Date();
-    start.setDate(1);
-    start.setHours(0, 0, 0, 0);
-    const map = new Map<Category, number>();
-    for (const t of txs.data?.items ?? []) {
-      if (t.direction !== 'out' || t.category === 'transfer' || Date.parse(t.occurredAt) < start.getTime()) continue;
-      map.set(t.category, (map.get(t.category) ?? 0) + t.amount);
-    }
-    return [...map].sort((a, b) => b[1] - a[1]).slice(0, 4);
-  }, [txs.data]);
+  const monthByCategory = useMemo(
+    () =>
+      (period.data?.byCategory ?? [])
+        .filter((x) => x.category !== 'transfer' && x.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 4)
+        .map((x) => [x.category, x.amount] as const),
+    [period.data],
+  );
 
   const total = (accounts.data ?? []).reduce((s, a) => s + a.balance, 0);
   const noMoneyYet = !!accounts.data && accounts.data.every((a) => a.balance === 0) && txs.data?.items.length === 0;
@@ -206,20 +208,22 @@ export default function Home() {
 
       {/* 4. Where the money is. */}
       <Card style={{ gap: space.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <Text variant="footnote" color="secondary" weight="500">
             Total balance
           </Text>
-          <Text variant="title2" tabular>
-            {formatAmount(total, cur)}{' '}
+          <Text variant="title2" tabular numberOfLines={1} adjustsFontSizeToFit style={{ flexShrink: 1 }}>
+            {accounts.data ? formatAmount(total, cur) : '…'}{' '}
             <Text variant="footnote" color="secondary" weight="600">
               {cur}
             </Text>
           </Text>
         </View>
+        {accounts.isError ? <ErrorRow message="Couldn’t load your balances." onRetry={() => void accounts.refetch()} /> : null}
+        {accounts.isLoading ? <ActivityIndicator color={c.accent} style={{ height: 64 }} /> : null}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(accounts.data ?? []).map((a) => {
-            const st = accountStyle[a.type]!;
+            const st = accountStyle[a.type] ?? accountStyle.cash!;
             const box = { backgroundColor: st.bg, borderRadius: 14, padding: 12, gap: 6 };
             const tile = (
               <>

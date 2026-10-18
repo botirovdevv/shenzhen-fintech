@@ -49,12 +49,19 @@ export const usingMock = BASE_URL === '';
 
 // Without a timeout a stalled connection leaves the spinner on forever instead of showing an error.
 const TIMEOUT_MS = 20_000;
-const VOICE_TIMEOUT_MS = 60_000;
+// The assistant and typed expenses go through the language model, which can take a while with tool calls.
+const AI_TIMEOUT_MS = 90_000;
+const VOICE_TIMEOUT_MS = 90_000;
 
 const networkError = (e: unknown) =>
   (e as { name?: string })?.name === 'AbortError' || (e as { name?: string })?.name === 'TimeoutError'
     ? new ApiError('TIMEOUT', 'The FeMate server is taking too long to answer. Check your connection and try again.')
     : new ApiError('NETWORK', 'Can’t reach the FeMate server. Check your connection and try again.');
+
+async function sessionEnded(): Promise<never> {
+  await useSession.getState().signOut();
+  throw new ApiError('UNAUTHORIZED', 'Your session has ended. Sign in again.');
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController();
@@ -66,7 +73,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 
-async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function http<T>(method: string, path: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
   const token = useSession.getState().token;
   const init: RequestInit = {
     method,
@@ -81,20 +88,17 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
   const retryable = method === 'GET' || path === '/auth/login';
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${BASE_URL}${path}`, init, TIMEOUT_MS);
+    res = await fetchWithTimeout(`${BASE_URL}${path}`, init, timeoutMs);
   } catch (e) {
     if (!retryable) throw networkError(e);
     try {
-      res = await fetchWithTimeout(`${BASE_URL}${path}`, init, TIMEOUT_MS);
+      res = await fetchWithTimeout(`${BASE_URL}${path}`, init, timeoutMs);
     } catch (e2) {
       throw networkError(e2);
     }
   }
   // A 401 on sign-in or sign-up is a wrong password, not an expired session.
-  if (res.status === 401 && token && !path.startsWith('/auth/')) {
-    await useSession.getState().signOut();
-    throw new ApiError('UNAUTHORIZED', 'Your session has ended. Sign in again.');
-  }
+  if (res.status === 401 && token && !path.startsWith('/auth/')) await sessionEnded();
   const data = (await res.json().catch(() => null)) as T | ApiErrorBody | null;
   if (!res.ok) {
     const err = (data as ApiErrorBody | null)?.error;
@@ -137,6 +141,7 @@ async function uploadVoice(uri: string): Promise<{ transcript: string; transacti
   } catch (e) {
     throw networkError(e);
   }
+  if (res.status === 401 && token) await sessionEnded();
   const data = (await res.json().catch(() => null)) as { transcript: string; transaction: Transaction } | ApiErrorBody | null;
   if (!res.ok) {
     const err = (data as ApiErrorBody | null)?.error;
@@ -161,14 +166,14 @@ export const api = {
   setBalance: (b: SetBalanceBody) => (usingMock ? mockApi.setBalance(b) : http<MoneyResponse>('PUT', '/accounts/balance', b)),
   transactions: (limit = 50) => (usingMock ? mockApi.transactions(limit) : http<Page<Transaction>>('GET', `/transactions${qs({ limit })}`)),
   createTransaction: (b: CreateTransactionBody) =>
-    usingMock ? mockApi.createTransaction(b) : http<Transaction>('POST', '/transactions', b),
+    usingMock ? mockApi.createTransaction(b) : http<Transaction>('POST', '/transactions', b, 'text' in b ? AI_TIMEOUT_MS : TIMEOUT_MS),
   dailySummary: () => (usingMock ? mockApi.dailySummary() : http<DailySummary>('GET', '/summary/daily')),
   insight: () => (usingMock ? mockApi.insight() : http<DailyInsight>('GET', '/summary/insight')),
   periodSummary: (from: Date, to: Date) =>
     usingMock
       ? mockApi.periodSummary(from, to)
       : http<PeriodSummary>('GET', `/summary/period${qs({ from: from.toISOString(), to: to.toISOString() })}`),
-  chat: (message: string) => (usingMock ? mockApi.chat(message) : http<ChatResponse>('POST', '/agent/chat', { message })),
+  chat: (message: string) => (usingMock ? mockApi.chat(message) : http<ChatResponse>('POST', '/agent/chat', { message }, AI_TIMEOUT_MS)),
   recommendations: () => (usingMock ? mockApi.recommendations() : http<Recommendation[]>('GET', '/agent/recommendations')),
   applyRecommendation: (id: string) =>
     usingMock ? mockApi.applyRecommendation(id) : http<{ action?: AgentAction }>('POST', `/agent/recommendations/${id}/apply`),

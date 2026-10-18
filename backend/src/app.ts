@@ -84,12 +84,21 @@ export async function buildApp({ db, config, llm, stt, cards, logger = false }: 
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    // Behind Cloudflare the client can put anything in X-Forwarded-For; CF-Connecting-IP is set by Cloudflare itself.
+    keyGenerator: (req) => {
+      const cf = req.headers['cf-connecting-ip'];
+      return (Array.isArray(cf) ? cf[0] : cf) ?? req.ip;
+    },
     errorResponseBuilder: (_req, ctx) => new ApiError(429, 'RATE_LIMITED', `Too many requests. Try again in ${ctx.after}.`),
   });
 
   app.setErrorHandler((err: unknown, req, reply) => {
     if (err instanceof ApiError) return reply.status(err.statusCode).send({ error: { code: err.code, message: err.message } });
-    const e = err as { statusCode?: number; code?: string; message?: string };
+    const e = err as { statusCode?: number; code?: string; message?: string; cause?: { code?: string } };
+    // 22003 = numeric value out of range: a total grew past the int4 money columns.
+    if (e.code === '22003' || e.cause?.code === '22003') {
+      return reply.status(400).send({ error: { code: 'AMOUNT_TOO_LARGE', message: 'That amount is too large.' } });
+    }
     if (e.statusCode && e.statusCode < 500) {
       return reply.status(e.statusCode).send({ error: { code: e.code ?? `HTTP_${e.statusCode}`, message: e.message ?? 'Bad request.' } });
     }

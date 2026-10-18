@@ -30,8 +30,16 @@ export default function StartingBalances() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const total = values.card + values.cash + values.savings;
+  // Start from what the accounts already hold (opened again from Home, a blank field must not zero an account).
+  const [loaded, setLoaded] = useState(false);
+  if (!loaded && accounts.data) {
+    setLoaded(true);
+    const of = (t: Account['type']) => Math.max(0, accounts.data.find((a) => a.type === t)?.balance ?? 0);
+    setValues({ card: of('card'), cash: of('cash'), savings: of('savings') });
+  }
 
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {

@@ -1,21 +1,23 @@
 // Proactive spending alerts, checked after every recorded expense: the first time today goes over the
-// daily plan, and when a category's week runs well above its usual week. Each alert is stored once
+// daily plan, when a category's week runs well above its usual week, and a single unusually large
+// spend (anomaly, PLAN.md §9). Each alert is stored once
 // (unique per user / kind / key), so repeated expenses never repeat it.
 import { fromUzs, type Category, type Currency, type MonthPlan } from '@femate/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, gte, ne } from 'drizzle-orm';
 
 import { buildDailyInsight } from '../agent/insights';
 import { userCurrency } from '../bank/currency';
 import type { Db } from '../db/client';
-import { alerts, users } from '../db/schema';
+import { alerts, transactions, users } from '../db/schema';
 import { money } from '../lib/format';
 import { newId } from '../lib/ids';
 import { addDays } from '../lib/time';
+import { ANOMALY_FACTOR, ANOMALY_MIN_UZS, ANOMALY_WINDOW_DAYS, isAnomaly } from '../rules/anomaly';
 import { monthPlan } from '../rules/monthPlan';
 import { notifyUser } from './notify';
 
 export interface Alert {
-  kind: 'day_over' | 'category_up';
+  kind: 'day_over' | 'category_up' | 'anomaly';
   key: string;
   title: string;
   body: string;
@@ -60,13 +62,52 @@ export function alertsFor(name: string, plan: MonthPlan, currency: Currency): Al
   return out;
 }
 
-/** Stores and sends the alerts not sent before. Returns the new ones. */
-export async function checkSpendingAlerts(db: Db, userId: string): Promise<Alert[]> {
+export interface SpendRef {
+  id: string;
+  amount: number;
+  category: Category;
+  description: string;
+}
+
+/** The anomaly alert for one new spend, or null. */
+async function anomalyAlert(db: Db, userId: string, tx: SpendRef, currency: Currency): Promise<Alert | null> {
+  if (tx.category === 'transfer') return null;
+  const since = new Date(Date.now() - ANOMALY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({ amount: transactions.amount })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.direction, 'out'),
+        eq(transactions.category, tx.category),
+        gte(transactions.occurredAt, since),
+        ne(transactions.id, tx.id),
+      ),
+    );
+  const r = isAnomaly(
+    tx.amount,
+    rows.map((x) => x.amount),
+    fromUzs(ANOMALY_MIN_UZS, currency),
+  );
+  if (!r.anomaly) return null;
+  const times = Math.round(tx.amount / Math.max(1, r.median));
+  return {
+    kind: 'anomaly',
+    key: tx.id,
+    title: `Unusual ${tx.category} spend: ${money(tx.amount, currency)}`,
+    body: `“${tx.description}” is about ${Math.max(ANOMALY_FACTOR, times)}× your usual ${tx.category} spend of ${money(r.median, currency)}. If this wasn’t you, freeze your card in FeMate.`,
+  };
+}
+
+/** Stores and sends the alerts not sent before. Returns the new ones. Pass the new spend to also check it for an anomaly. */
+export async function checkSpendingAlerts(db: Db, userId: string, tx?: SpendRef): Promise<Alert[]> {
   const [u] = await db.select().from(users).where(eq(users.id, userId));
   if (!u) return [];
   const [plan, currency] = await Promise.all([monthPlan(db, userId), userCurrency(db, userId)]);
   const fresh: Alert[] = [];
-  for (const a of alertsFor(u.name, plan, currency)) {
+  const anomaly = tx ? await anomalyAlert(db, userId, tx, currency) : null;
+  for (const a of [...(anomaly ? [anomaly] : []), ...alertsFor(u.name, plan, currency)]) {
     const inserted = await db
       .insert(alerts)
       .values({ id: newId('alr'), userId, ...a })

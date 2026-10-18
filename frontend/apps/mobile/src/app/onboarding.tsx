@@ -8,6 +8,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { KeyboardInput, KeyboardScreen } from '@/components/KeyboardScreen';
 import { Button, Chip, IconTile, Text } from '@/components/ui';
 import { useCurrency } from '@/lib/currency';
+import { errorMessage } from '@/lib/api';
 import { formatMoney, formatWhole, parseWhole } from '@/lib/format';
 import { useMe, useUpdateMe } from '@/lib/queries';
 import { space, useTheme } from '@/theme';
@@ -59,6 +60,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState([4_000_000, 600_000, 500_000]); // minor units of `cur`
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // When editing from Settings, start from the saved numbers (adjusting state during render, once).
   if (editing && me.data && !loaded) {
@@ -83,17 +85,31 @@ export default function Onboarding() {
     setCur(next);
   }
   const next = async () => {
+    if (updateMe.isPending) return;
+    setError(null);
     if (!last) return setStep(step + 1);
-    await updateMe.mutateAsync({
-      ...(editing ? {} : { currency: cur }),
-      monthlyIncome: values[0],
-      fixedCostsMonthly: values[1],
-      savingsGoalMonthly: values[2],
-    });
+    try {
+      await updateMe.mutateAsync({
+        ...(editing ? {} : { currency: cur }),
+        monthlyIncome: values[0],
+        fixedCostsMonthly: values[1],
+        savingsGoalMonthly: values[2],
+      });
+    } catch (e) {
+      setError(errorMessage(e));
+      return;
+    }
     if (editing) router.back();
     else router.push('/connect-bank');
   };
-  const back = () => (step === 0 ? router.back() : setStep(step - 1));
+  // Right after sign-up onboarding replaced the sign-up screen, so step 1 has nowhere to go back to.
+  const canLeave = router.canGoBack();
+  const back = () => {
+    setError(null);
+    if (step > 0) setStep(step - 1);
+    else if (canLeave) router.back();
+  };
+  const overBudget = (values[0] ?? 0) > 0 && (values[1] ?? 0) + (values[2] ?? 0) >= (values[0] ?? 0);
 
   // Android back goes to the previous step instead of leaving onboarding.
   useEffect(() => {
@@ -122,7 +138,9 @@ export default function Onboarding() {
           accessibilityRole="button"
           accessibilityLabel={step === 0 ? 'Back' : 'Previous step'}
           onPress={back}
+          disabled={step === 0 && !canLeave}
           style={{
+            opacity: step === 0 && !canLeave ? 0 : 1,
             width: 44,
             height: 44,
             borderRadius: 22,
@@ -213,18 +231,24 @@ export default function Onboarding() {
 
       <View style={{ backgroundColor: c.accentTint, borderRadius: 18, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <IconTile name="receipt" bg={c.accent} fg={c.onAccent} size={40} iconSize={22} rounded={12} />
-        <View style={{ gap: 2 }}>
+        <View style={{ gap: 2, flex: 1 }}>
           <Text variant="footnote" color="accentInk" weight="600">
             Your daily allowance
           </Text>
-          <Text variant="title2" color="accentInk" tabular style={{ fontSize: 24 }}>
+          <Text variant="title2" color="accentInk" tabular style={{ fontSize: 24 }} numberOfLines={1} adjustsFontSizeToFit>
             {formatMoney(allowance, cur)}
           </Text>
           <Text variant="caption" color="accentInk">
-            (income − fixed − goal) ÷ {days} days
+            {overBudget && step > 0 ? 'Fixed costs and the goal use up all of your income.' : `(income − fixed − goal) ÷ ${days} days`}
           </Text>
         </View>
       </View>
+
+      {error ? (
+        <Text variant="footnote" color="danger" accessibilityLiveRegion="assertive">
+          {error}
+        </Text>
+      ) : null}
 
       <Button
         title={last ? (editing ? 'Save budget' : 'Connect your bank') : 'Continue'}

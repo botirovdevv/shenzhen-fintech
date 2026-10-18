@@ -588,7 +588,7 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 
 ### Stage 8: Qo'shimchalar (BE + FE)
 - [x] What-if simulyator (`/agent/simulate` va UI slayderlar)
-- [ ] Anomaliya aniqlash va ogohlantirish
+- [x] Anomaliya aniqlash va ogohlantirish (`rules/anomaly.ts`, `notify/spendingAlerts.ts`, Telegram + push)
 - [x] `/summary/period` va hisobot grafiklari
 
 **DoD:** Simulyator raqamlari Rules Engine testlariga mos keladi; seed'ga 500 000 so'mlik shopping qo'shilsa, anomaliya xabari keladi.
@@ -597,9 +597,9 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 - [x] VM'ga backend deploy — API ochiq: https://femate-api.usm0n.uz/api/v1 (Cloudflare tunnel `femate`, `femate-tunnel` konteyneri). Bot VM'da polling qilmoqda (`backend/scripts/deploy.sh`)
 - [ ] Expo web → Render static site; EAS APK — `pnpm build:web` (dist/) va `eas.json` (preview = APK) tayyor, deploy qilinmagan. APK hajmi: `expo-build-properties` (faqat arm64-v8a + armeabi-v7a, R8 minify, shrink, siqilgan .so) — 111 MB edi
 - [x] `/audit/export` → demo ssenariy o'tkaziladi → `docs/proof/audit-log.json` (2026-10-17, jonli API, OpenAI gpt-5-mini; to'liq so'rov/javoblar `docs/proof/demo-run.jsonl`)
-- [ ] `README.md`: o'rnatish, ishga tushirish, deploy, test, arxitektura (inglizcha)
-- [ ] `docs/technical.md`, `docs/security.md` (inglizcha)
-- [ ] `pnpm test` hammasi yashil
+- [x] `README.md`: o'rnatish, ishga tushirish, deploy, test, arxitektura (inglizcha)
+- [x] `docs/technical.md`, `docs/security.md` (inglizcha)
+- [x] `pnpm test` hammasi yashil (BE 92, FE 36)
 
 **DoD:** Deploy qilingan web ilovada demo ssenariy ([15-bo'lim](#15-demo-ssenariy)) boshidan oxirigacha ishlaydi; APK telefonda ishlaydi; 6 ta material tayyor.
 
@@ -622,8 +622,8 @@ Dizayn: toza, Apple uslubida, yorug' va qorong'i tema. Asosiy rang yashil (tejas
 - [ ] Ro'yxat shakli + pasportlar yuborildi
 - [ ] Raqobatchilar tahlili (Monefy, Spendee, Cleo va boshqalar) va bizning farqimiz: **ruxsat bilan harakat qiladigan agent**
 - [ ] O'zbekiston bozori raqamlari (karta foydalanuvchilari, naqd pul ulushi)
-- [ ] `docs/security.md`: ruxsat darajalari, Policy Guard, risk jadvali
-- [ ] `docs/technical.md`: arxitektura, algoritmlar, LLM qoidalari
+- [x] `docs/security.md`: ruxsat darajalari, Policy Guard, risk jadvali
+- [x] `docs/technical.md`: arxitektura, algoritmlar, LLM qoidalari
 - [ ] Slaydlar (≤ 10 daqiqa)
 - [ ] Demo video (≤ 5 daqiqa, inglizcha subtitr)
 
@@ -732,3 +732,4 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 | 2026-10-17 | Claude (BE) | Lithic sandbox ulandi: VM `.env` da `LITHIC_API_KEY` va `LITHIC_ASA_SECRET`, ASA `femate-api.usm0n.uz/api/v1/lithic/asa` ga ro'yxatdan o'tkazildi. Haqiqiy sandbox bilan tekshirildi: Aziz'ga Visa ·· 5716 chiqarildi, Evos $3.72 → APPROVED (~2 s), Uzum Market → INSUFFICIENT_FUNDS, muzlatish (Lithic PAUSED) → CARD_PAUSED, imzosiz ASA so'rovi → 401 | Clearing/qaytarishlarni kuzatish (events webhook) |
 | 2026-10-17 | Claude (FE+BE) | Yangi hisoblar bo'sh ochiladi: 0 balans, soxta tarix yo'q (14 kunlik tarix faqat demo Aziz uchun, `seedDemoHistory`). Pul kiritish: `bank/money.ts` + `POST /accounts/deposit` (karta to'ldirish — sandbox, naqd/jamg'armaga tushum), `POST /accounts/transfer` (o'z hisoblari orasida: bankomat karta → naqd, jamg'arma → karta, ...; manfiyga tushmaydi), `PUT /accounts/balance` ("Starting balance" / "Balance correction"). Hammasi `transfer` sifatida yoziladi — xarajat hisoblanmaydi, agent bularni chaqira olmaydi. Ilovada: bank ulangandan keyin boshlang'ich balanslar ekrani, bosh sahifada Add money / Move / Fix cash va bitta pul varag'i, karta ekranida Top up, kirim `+` bilan, naqd manfiy bo'lsa ogohlantirish. Tavsiyalar transferlarni hisobga olmaydi. 77 BE + 22 FE test, mahalliy web'da (mock) tekshirildi, VM'ga deploy | Eski hisoblardagi soxta tarixni tozalash; haqiqiy to'lov (Payme/Click/Uzum); SMS kirimini daromad sifatida yozish |
 | 2026-10-17 | Claude (BE) | Demo ssenariy (§15, 3–12) jonli API'da haqiqiy LLM bilan o'tkazildi, Aziz qayta seed qilingan. Hammasi kutilgandek: limit 93 548, ovoz → 45 000 food, SMS → Evos (botda), 19:48 hisobot Telegram'ga keldi, avtobus tavsiyasi 240 000, 20 000 pending → approve, 500 000 → `PER_ACTION_LIMIT`, injection'ni model rad etdi (tool chaqirilmadi), kill-switch → `KILL_SWITCH_ACTIVE`. `docs/proof/audit-log.json` (8 yozuv) + `demo-run.jsonl`. Topilmalar: Evos LLM'da `entertainment` bo'ldi; xarajat qo'shish (ovoz/SMS/hisobot) audit'ga yozilmaydi | Evos toifasini tuzatish; xarajatlarni audit'ga yozish; `docs/security.md` |
+| 2026-10-18 | Claude (FE+BE) | Topshirishdan oldingi to'liq tekshiruv. BE: summalar int4 dan oshib 500 berardi (injection ssenariysi ham) → 1 mlrd cheklov + 400 `AMOUNT_TOO_LARGE`; xarajatlar (qo'lda/ovoz/SMS) audit'ga yoziladi; anomaliya (3 × mediana va ≥ 100 000); Evos va boshqa mahalliy do'konlar LLM'da ham qoidalar bo'yicha; kill-switch'dan keyin `PUT /permissions` agentni o'zi yoqmaydi (faqat `agentEnabled: true`, L1 dan); reject/approve poygasi, kunlik limit tranzaksiya ichida qayta tekshiriladi; sana filtrlari Toshkent kuni bo'yicha; rate-limit `CF-Connecting-IP`; bot faqat shaxsiy chatda; push xatolari tekshiriladi. Testlar ketma-ket (sekin laptopda PGlite timeout). FE: ikki marta saqlash/kirish himoyasi, barcha mutatsiyalarda xato ko'rsatiladi (kill-switch, reject, apply, onboarding, sozlamalar), sessiya tugasa kesh tozalanadi va login'ga qaytadi, AI so'rovlari 90 s, valyuta almashganda eski raqamlar ko'rinmaydi, push o'chirilganda/chiqishda server token tozalanadi, bosh sahifa oylik toifalari serverdan, katta summalar bir qatorda, dark mode ranglari, Reports nolga bo'lish, Money "All" tiyinlar bilan. `.env` jonli API, LAN `.env.development.local` da. `docs/technical.md`, `docs/security.md`, root README. BE 92 + FE 36 test yashil | Sherik: `backend/scripts/deploy.sh` bilan VM'ga deploy; APK'ni telefonda tekshirish; Android push uchun FCM kaliti |

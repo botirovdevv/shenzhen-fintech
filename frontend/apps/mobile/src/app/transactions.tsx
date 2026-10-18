@@ -1,7 +1,7 @@
 import type { Category, Transaction } from '@femate/shared';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
 import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
@@ -9,7 +9,7 @@ import { Card, Chip, ErrorRow, IconTile, Text } from '@/components/ui';
 import { categoryIcon, sourceIcon, sourceLabel } from '@/lib/categories';
 import { useCurrency } from '@/lib/currency';
 import { categoryLabel, formatAmount, formatMoney } from '@/lib/format';
-import { useTransactions } from '@/lib/queries';
+import { useAllTransactions } from '@/lib/queries';
 import { useTheme } from '@/theme';
 
 function dayTitle(d: Date, now = new Date()) {
@@ -28,7 +28,7 @@ const hm = (iso: string) => {
 export default function Transactions() {
   const cur = useCurrency();
   const { c } = useTheme();
-  const txs = useTransactions();
+  const txs = useAllTransactions();
   const [filter, setFilter] = useState<Category | 'all'>('all');
 
   const cats = useMemo(() => [...new Set((txs.data?.items ?? []).map((t) => t.category))], [txs.data]);
@@ -54,12 +54,13 @@ export default function Transactions() {
       header={
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={{ flexDirection: 'row', alignItems: 'center', height: 44, alignSelf: 'flex-start', marginBottom: -8 }}
         >
           <Icon name="chevronLeft" size={22} color={c.accent} strokeWidth={2.4} />
           <Text variant="body" color="accent" style={{ fontSize: 17 }}>
-            Today
+            Back
           </Text>
         </Pressable>
       }
@@ -73,6 +74,7 @@ export default function Transactions() {
         <View style={{ width: 8 }} />
       </ScrollView>
 
+      {txs.isLoading ? <ActivityIndicator color={c.accent} style={{ paddingVertical: 24 }} /> : null}
       {txs.isError ? <ErrorRow message="Couldn’t load your transactions." onRetry={() => void txs.refetch()} /> : null}
       {!txs.isLoading && groups.length === 0 && !txs.isError ? (
         <Text variant="callout" color="secondary" style={{ textAlign: 'center', paddingVertical: 24 }}>
@@ -86,9 +88,11 @@ export default function Transactions() {
             <Text variant="footnote" color="secondary" weight="600">
               {g.title}
             </Text>
-            <Text variant="footnote" color="secondary" tabular>
-              −{formatAmount(g.total, cur)}
-            </Text>
+            {g.total > 0 ? (
+              <Text variant="footnote" color="secondary" tabular>
+                −{formatAmount(g.total, cur)}
+              </Text>
+            ) : null}
           </View>
           <Card padded={false} style={{ paddingVertical: 4 }}>
             {g.items.map((t, i) => (
@@ -118,7 +122,7 @@ export default function Transactions() {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <Icon name={sourceIcon[t.source]} size={13} color={c.secondary} strokeWidth={2.2} />
-                    <Text variant="footnote" color="secondary">
+                    <Text variant="footnote" color="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
                       {categoryLabel[t.category]} · {hm(t.occurredAt)} · {sourceLabel[t.source]}
                     </Text>
                   </View>
@@ -139,6 +143,11 @@ export default function Transactions() {
           </Card>
         </View>
       ))}
+      {txs.data?.nextCursor ? (
+        <Text variant="footnote" color="secondary" style={{ textAlign: 'center' }}>
+          Showing your latest {txs.data.items.length}. Older ones are in Reports.
+        </Text>
+      ) : null}
     </Screen>
   );
 }

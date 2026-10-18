@@ -76,7 +76,8 @@ export default function ConnectBank() {
       >
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={{ flexDirection: 'row', alignItems: 'center', height: 44, alignSelf: 'flex-start' }}
         >
           <Icon name="chevronLeft" size={22} color={c.accent} strokeWidth={2.4} />

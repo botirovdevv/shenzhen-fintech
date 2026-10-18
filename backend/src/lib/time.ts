@@ -26,3 +26,15 @@ export function daysInMonth(date: string): number {
 export function tashkentTime(date: string, hour: number, minute: number): Date {
   return new Date(dayStart(date).getTime() + (hour * 60 + minute) * 60_000);
 }
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A `from` query value: a date-only value means 00:00 Tashkent of that day. */
+export function rangeFrom(v: string): Date {
+  return DATE_ONLY.test(v) ? dayStart(v) : new Date(v);
+}
+
+/** A `to` query value: a date-only value includes that whole Tashkent day. */
+export function rangeTo(v: string): Date {
+  return DATE_ONLY.test(v) ? new Date(dayStart(addDays(v, 1)).getTime() - 1) : new Date(v);
+}

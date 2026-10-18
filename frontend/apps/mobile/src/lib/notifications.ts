@@ -55,8 +55,8 @@ async function registerPushToken(N: NotificationsModule): Promise<boolean> {
   }
 }
 
-// Asks for permission, schedules the daily report reminder (a local notification) and registers for
-// server push where the build allows it.
+// Asks for permission and registers for server push (the real daily report and agent alerts). Where the
+// build can't get a push token, a local reminder at the report time stands in, so there is never a double.
 export async function enableNotifications(reportTime: string): Promise<EnableResult> {
   if (Platform.OS === 'web') return { ok: false, reason: 'Notifications work in the phone app, not in the browser.' };
   const N = load();
@@ -73,15 +73,17 @@ export async function enableNotifications(reportTime: string): Promise<EnableRes
   if (Platform.OS === 'android') {
     await N.setNotificationChannelAsync(CHANNEL, { name: 'Daily report', importance: N.AndroidImportance.DEFAULT });
   }
-  await scheduleDailyReport(reportTime);
   const pushToken = await registerPushToken(N);
+  await scheduleDailyReport(reportTime, pushToken);
   return { ok: true, pushToken };
 }
 
-export async function scheduleDailyReport(reportTime: string) {
+/** The local stand-in reminder; with server push on, the server sends the report and this stays off. */
+export async function scheduleDailyReport(reportTime: string, serverPush: boolean) {
   const N = load();
   if (!N) return;
   await N.cancelAllScheduledNotificationsAsync();
+  if (serverPush) return;
   const { hour, minute } = parseTime(reportTime);
   await N.scheduleNotificationAsync({
     content: { title: 'Your day with FeMate', body: 'See what you spent today and how much you can move to Savings.' },
@@ -89,7 +91,9 @@ export async function scheduleDailyReport(reportTime: string) {
   });
 }
 
+/** Stops the local reminder and tells the server to stop pushing to this phone. */
 export async function disableNotifications() {
+  await api.updateMe({ expoPushToken: '' }).catch(() => undefined);
   const N = load();
   if (!N) return;
   await N.cancelAllScheduledNotificationsAsync();

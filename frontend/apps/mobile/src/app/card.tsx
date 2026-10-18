@@ -233,7 +233,8 @@ export default function CardScreen() {
       header={
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={{ flexDirection: 'row', alignItems: 'center', height: 44, alignSelf: 'flex-start', marginBottom: -8 }}
         >
           <Icon name="chevronLeft" size={22} color={c.accent} strokeWidth={2.4} />
@@ -328,7 +329,7 @@ export default function CardScreen() {
               <Text variant="footnote" color="secondary" weight="500">
                 Available to spend
               </Text>
-              <Text variant="title2" tabular>
+              <Text variant="title2" tabular numberOfLines={1} adjustsFontSizeToFit>
                 {formatMoney(funding?.balance ?? 0, cur)}
               </Text>
             </View>

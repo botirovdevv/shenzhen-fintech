@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { router, Stack, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -36,6 +36,14 @@ export default function RootLayout() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // When the session ends anywhere (expired token on any screen, sign-out), go to sign-in.
+  const token = useSession((s) => s.token);
+  const prevToken = useRef(token);
+  useEffect(() => {
+    if (prevToken.current && !token) router.replace('/login');
+    prevToken.current = token;
+  }, [token]);
 
   return (
     <SafeAreaProvider>

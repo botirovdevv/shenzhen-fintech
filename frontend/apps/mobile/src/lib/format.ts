@@ -26,7 +26,7 @@ export function formatUZS(n: number): string {
 export function shortAmount(n: number, c: Currency = 'UZS'): string {
   const v = toMajor(n, c);
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (c === 'UZS' || v >= 10_000) return `${Math.round(v / 1000)}k`;
+  if (v >= 10_000 || (c === 'UZS' && v >= 1000)) return `${Math.round(v / 1000)}k`;
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
   return String(Math.round(v));
 }
@@ -34,6 +34,14 @@ export function shortAmount(n: number, c: Currency = 'UZS'): string {
 /** Whole units for big inputs: 4000000 UZS -> "4 000 000", 33058 USD cents -> "331". */
 export function formatWhole(n: number, c: Currency = 'UZS'): string {
   return group(Math.round(toMajor(n, c)));
+}
+
+/** An amount as an editable input value, no grouping: 33058 USD -> "330.58", 33000 USD -> "330", 4000000 UZS -> "4000000". */
+export function amountInputValue(n: number, c: Currency = 'UZS'): string {
+  const d = CURRENCY_INFO[c].decimals;
+  const abs = Math.max(0, Math.trunc(n));
+  const cents = d ? abs % 10 ** d : 0;
+  return String(Math.floor(abs / 10 ** d)) + (cents ? `.${String(cents).padStart(d, '0')}` : '');
 }
 
 /** What the user typed in whole units -> minor units ("1 250" USD -> 125000). */

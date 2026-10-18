@@ -1,6 +1,6 @@
-import type { AgentAction } from '@femate/shared';
+import { fromUzs, type AgentAction } from '@femate/shared';
 import { BlurView } from 'expo-blur';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,13 +23,15 @@ interface Msg {
 }
 
 const TAB_BAR = 49;
-const SUGGESTIONS: { label: string; icon: IconName }[] = [
+// The big transfer is over every level's per-action limit, so it shows Policy Guard refusing it.
+const suggestions = (bigTransfer: string): { label: string; icon: IconName }[] => [
   { label: 'How am I doing this month?', icon: 'target' },
   { label: 'How much is left today?', icon: 'gauge' },
   { label: 'Move today’s savings', icon: 'savings' },
-  { label: 'Move 500 000 to savings', icon: 'transfer' },
+  { label: `Move ${bigTransfer} to savings`, icon: 'transfer' },
   { label: 'Where does my money go?', icon: 'chart' },
 ];
+const levelName = { L0: 'Read-only', L1: 'Advisor', L2: 'Co-pilot', L3: 'Autopilot' } as const;
 const recIcon: Record<string, IconName> = { rec_bus: 'bus', rec_food: 'food' };
 
 export default function Assistant() {
@@ -49,20 +51,31 @@ export default function Assistant() {
   const scroll = useRef<ScrollView>(null);
 
   // Start the conversation with the action the agent is already waiting on.
+  const level = perms.data?.level;
   useEffect(() => {
     const first = pending.data?.find((a) => a.type === 'transfer_to_savings');
-    if (msgs.length === 0 && first) {
+    if (msgs.length === 0 && first && level) {
       setMsgs([
-        { id: 'm0', who: 'user', text: 'How much did I save today? Move it to savings.' },
         {
-          id: 'm1',
+          id: 'm0',
           who: 'agent',
-          text: `I can move ${formatMoney(first.amount ?? 0, cur)} to Savings. You are on Co-pilot, so it needs your approval.`,
+          text: `I’d like to move ${formatMoney(first.amount ?? 0, cur)} to Savings. You’re on ${level} ${levelName[level]}, so it waits for your approval.`,
           action: first,
         },
       ]);
     }
-  }, [pending.data, msgs.length, cur]);
+  }, [pending.data, msgs.length, cur, level]);
+  const pendingIds = new Set((pending.data ?? []).map((a) => a.id));
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  // Another screen can open the chat with a question (Reports → "Make this a plan").
+  const { ask } = useLocalSearchParams<{ ask?: string }>();
+  useEffect(() => {
+    if (!ask) return;
+    router.setParams({ ask: undefined });
+    void send(ask);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask]);
 
   // Keep the newest message in view when the keyboard opens.
   useEffect(() => {
@@ -111,7 +124,7 @@ export default function Assistant() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <Icon name="calendar" size={13} color={c.secondary} strokeWidth={2.2} />
               <Text variant="footnote" color="secondary">
-                Based on your last 14 days · {perms.data?.agentEnabled === false ? 'agent stopped' : `${perms.data?.level ?? 'L2'}`}
+                Based on your last 14 days · {perms.data?.agentEnabled === false ? 'agent stopped' : (perms.data?.level ?? '…')}
               </Text>
             </View>
           </View>
@@ -161,10 +174,18 @@ export default function Assistant() {
                   icon="check"
                   size="medium"
                   loading={apply.isPending && apply.variables === r.id}
+                  disabled={apply.isPending}
                   onPress={async () => {
-                    const res = await apply.mutateAsync(r.id);
-                    haptic('success');
-                    if (res.action) router.push({ pathname: '/action/[id]', params: { id: res.action.id } });
+                    setApplyError(null);
+                    try {
+                      const res = await apply.mutateAsync(r.id);
+                      haptic('success');
+                      if (res.action?.status === 'pending') router.push({ pathname: '/action/[id]', params: { id: res.action.id } });
+                      else if (res.action?.status === 'blocked') setApplyError(res.action.reason);
+                    } catch (e) {
+                      haptic('warning');
+                      setApplyError(errorMessage(e));
+                    }
                   }}
                 />
                 <Button title="Not now" icon="clock" size="medium" variant="secondary" onPress={() => setHidden((h) => [...h, r.id])} />
@@ -172,6 +193,18 @@ export default function Assistant() {
             )}
           </Card>
         ))}
+
+        {applyError ? (
+          <View
+            accessibilityLiveRegion="assertive"
+            style={{ flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: c.dangerTint, padding: 12, borderRadius: 14 }}
+          >
+            <Icon name="info" size={18} color={c.dangerInk} strokeWidth={2.2} />
+            <Text variant="footnote" color="dangerInk" style={{ flex: 1 }}>
+              {applyError}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8, paddingHorizontal: 4 }}>
           <View style={{ flex: 1, height: 0.5, backgroundColor: c.separator }} />
@@ -183,7 +216,8 @@ export default function Assistant() {
 
         {msgs.map((m) => {
           const me = m.who === 'user';
-          const a = m.action;
+          // A pending action decided since (here, in Agent or in Telegram) drops its Review card.
+          const a = m.action?.status === 'pending' && !pendingIds.has(m.action.id) ? undefined : m.action;
           return (
             <View
               key={m.id}
@@ -215,12 +249,11 @@ export default function Assistant() {
                       paddingHorizontal: 14,
                       borderRadius: 18,
                       backgroundColor: c.warnTint,
-                      minWidth: 260,
                     }}
                   >
                     <Icon name="transfer" size={20} color={c.warnInk} strokeWidth={2} />
                     <View style={{ flex: 1 }}>
-                      <Text variant="callout" weight="600" tabular>
+                      <Text variant="callout" weight="600" tabular numberOfLines={1} adjustsFontSizeToFit>
                         Card → Savings · {formatAmount(a.amount ?? 0, cur)}
                       </Text>
                       <Text variant="footnote" color="warnInk">
@@ -302,7 +335,7 @@ export default function Assistant() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ gap: 8, paddingHorizontal: 12 }}
         >
-          {SUGGESTIONS.map((s) => (
+          {suggestions(cur === 'UZS' ? '500 000' : formatMoney(fromUzs(500_000, cur), cur)).map((s) => (
             <PressableScale
               key={s.label}
               onPress={() => send(s.label)}

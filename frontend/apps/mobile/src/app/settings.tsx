@@ -1,6 +1,6 @@
 import { CURRENCIES, CURRENCY_INFO, VOICE_LANGUAGES, type Currency, type VoiceLanguage } from '@femate/shared';
 import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Linking, Modal, Pressable, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,11 +8,11 @@ import { Icon, type IconName } from '@/components/Icon';
 import { LogoMark } from '@/components/Logo';
 import { Screen } from '@/components/Screen';
 import { Button, Chip, haptic, IconTile, ListRow, PressableScale, SectionLabel, Text } from '@/components/ui';
-import { api, usingMock } from '@/lib/api';
+import { api, errorMessage, usingMock } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { formatAmount } from '@/lib/format';
 import { disableNotifications, enableNotifications, scheduleDailyReport } from '@/lib/notifications';
-import { queryClient, useDailySummary, useMe, usePermissions, useUpdateMe } from '@/lib/queries';
+import { useDailySummary, useMe, usePermissions, useUpdateMe } from '@/lib/queries';
 import { useSession } from '@/store/session';
 import { useSettings, type Appearance } from '@/store/settings';
 import { useTheme } from '@/theme';
@@ -38,7 +38,7 @@ export default function Settings() {
   const me = useMe();
   const daily = useDailySummary();
   const perms = usePermissions();
-  const { appearance, setAppearance, pushEnabled, setPushEnabled } = useSettings();
+  const { appearance, setAppearance, pushEnabled, serverPush, setPushEnabled } = useSettings();
   const signOut = useSession((s) => s.signOut);
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
@@ -51,56 +51,80 @@ export default function Settings() {
   const togglePush = async (on: boolean) => {
     haptic('light');
     setNotice(null);
-    if (!on) {
-      await disableNotifications();
-      setPushEnabled(false);
-      return;
+    try {
+      if (!on) {
+        await disableNotifications();
+        setPushEnabled(false);
+        return;
+      }
+      const res = await enableNotifications(reportTime);
+      if (!res.ok) {
+        setNotice(res.reason);
+        setPushEnabled(false);
+        return;
+      }
+      setPushEnabled(true, res.pushToken);
+      setNotice(
+        res.pushToken
+          ? `You’ll get your daily report at ${reportTime} and alerts from the agent.`
+          : `You’ll get a reminder at ${reportTime}. Agent alerts also arrive in Telegram once it’s linked.`,
+      );
+    } catch (e) {
+      setNotice(errorMessage(e));
     }
-    const res = await enableNotifications(reportTime);
-    if (!res.ok) {
-      setNotice(res.reason);
-      setPushEnabled(false);
-      return;
+  };
+
+  // Each choice saves on the server; a failure is shown under the list instead of vanishing.
+  const save = async (run: () => Promise<unknown>) => {
+    haptic('light');
+    setPicker(null);
+    setNotice(null);
+    try {
+      await run();
+    } catch (e) {
+      setNotice(errorMessage(e));
     }
-    setPushEnabled(true);
-    setNotice(
-      res.pushToken
-        ? `You’ll get a reminder at ${reportTime} and alerts from the agent.`
-        : `You’ll get a reminder at ${reportTime}. Agent alerts need the installed app (not Expo Go).`,
-    );
   };
 
-  const chooseTime = async (t: string) => {
-    haptic('light');
-    setPicker(null);
-    await updateMe.mutateAsync({ reportTime: t });
-    if (pushEnabled) await scheduleDailyReport(t);
-  };
+  const chooseTime = (t: string) =>
+    save(async () => {
+      await updateMe.mutateAsync({ reportTime: t });
+      if (pushEnabled) await scheduleDailyReport(t, serverPush);
+    });
 
-  // Converts every stored amount on the server, so everything that shows money is refetched.
-  const chooseCurrency = async (x: Currency) => {
-    haptic('light');
-    setPicker(null);
-    if (x === cur) return;
-    await updateMe.mutateAsync({ currency: x });
-    await queryClient.invalidateQueries();
-  };
+  // The server converts every stored amount; useUpdateMe refetches everything that shows money.
+  const chooseCurrency = (x: Currency) => (x === cur ? save(async () => undefined) : save(() => updateMe.mutateAsync({ currency: x })));
 
-  const chooseVoice = async (v: VoiceLanguage) => {
-    haptic('light');
-    setPicker(null);
-    await updateMe.mutateAsync({ voiceLanguage: v });
-  };
+  const chooseVoice = (v: VoiceLanguage) => save(() => updateMe.mutateAsync({ voiceLanguage: v }));
 
   const getCode = async () => {
     setCodeBusy(true);
+    setNotice(null);
     try {
       setCode(await api.telegramLinkCode());
       haptic('success');
+    } catch (e) {
+      setNotice(errorMessage(e));
     } finally {
       setCodeBusy(false);
     }
   };
+
+  // While a link code is on screen, check every few seconds whether the bot has linked the chat,
+  // and drop the code once it expires.
+  const [now, setNow] = useState(() => Date.now());
+  const refetchMe = me.refetch;
+  useEffect(() => {
+    if (!code || me.data?.telegramLinked) return;
+    const id = setInterval(() => {
+      setNow(Date.now());
+      void refetchMe();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [code, refetchMe, me.data?.telegramLinked]);
+  const codeLeftMin = code ? Math.ceil((Date.parse(code.expiresAt) - now) / 60_000) : 0;
+  // A code is done once it expires or the bot has linked the chat.
+  const activeCode = code && codeLeftMin > 0 && !me.data?.telegramLinked ? code : null;
 
   const group = { backgroundColor: c.card, borderRadius: 18, overflow: 'hidden' as const };
 
@@ -110,12 +134,13 @@ export default function Settings() {
       header={
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           style={{ flexDirection: 'row', alignItems: 'center', height: 44, alignSelf: 'flex-start', marginBottom: -8 }}
         >
           <Icon name="chevronLeft" size={22} color={c.accent} strokeWidth={2.4} />
           <Text variant="body" color="accent" style={{ fontSize: 17 }}>
-            Today
+            Back
           </Text>
         </Pressable>
       }
@@ -129,12 +154,12 @@ export default function Settings() {
           </Text>
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text variant="headline" style={{ fontSize: 19 }}>
+          <Text variant="headline" style={{ fontSize: 19 }} numberOfLines={1}>
             {u?.name ?? '…'}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Icon name="mail" size={14} color={c.secondary} strokeWidth={2} />
-            <Text variant="footnote" color="secondary" style={{ fontSize: 14 }}>
+            <Text variant="footnote" color="secondary" style={{ fontSize: 14, flexShrink: 1 }} numberOfLines={1}>
               {u?.email}
             </Text>
           </View>
@@ -152,7 +177,7 @@ export default function Settings() {
         >
           <Icon name="shield" size={12} color={c.accentInk} strokeWidth={2.4} />
           <Text variant="caption" color="accentInk" weight="700">
-            {perms.data?.level ?? 'L2'}
+            {perms.data?.level ?? '…'}
           </Text>
         </View>
       </View>
@@ -261,7 +286,7 @@ export default function Settings() {
           />
         </View>
         {notice ? (
-          <Text variant="footnote" color="secondary" style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+          <Text variant="footnote" color="secondary" style={{ paddingHorizontal: 16, paddingTop: 8 }} accessibilityLiveRegion="polite">
             {notice}
           </Text>
         ) : null}
@@ -311,7 +336,7 @@ export default function Settings() {
       <View>
         <SectionLabel>FeMate card</SectionLabel>
         <View style={group}>
-          <ListRow icon="card" tile="#0E7A4B" title="Virtual Visa card" last onPress={() => router.push('/card')} />
+          <ListRow icon="card" tile="#0E7A4B" title="Virtual card" last onPress={() => router.push('/card')} />
         </View>
       </View>
 
@@ -324,7 +349,7 @@ export default function Settings() {
               Add expenses, forward bank SMS and get your daily report in Telegram. The bot can read and add, but it can never move money.
             </Text>
           </View>
-          {me.data?.telegramLinked && !code ? (
+          {me.data?.telegramLinked && !activeCode ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Icon name="check" size={16} color={c.accent} strokeWidth={2.4} />
               <Text variant="callout" style={{ flex: 1 }}>
@@ -332,25 +357,25 @@ export default function Settings() {
               </Text>
               <Button title="Open" variant="tinted" size="small" onPress={() => Linking.openURL(BOT_URL)} />
             </View>
-          ) : code ? (
+          ) : activeCode ? (
             <View style={{ alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: c.fill }}>
               <Text selectable variant="largeTitle" tabular style={{ letterSpacing: 4, fontSize: 34 }}>
-                {code.code}
+                {activeCode.code}
               </Text>
               <Text variant="footnote" color="body" style={{ textAlign: 'center', fontSize: 14 }} selectable>
-                Send /start {code.code} to @femate_uz_bot, or tap below.
+                Send /start {activeCode.code} to @femate_uz_bot, or tap below.
               </Text>
               <Button
                 title="Open in Telegram"
                 icon="send"
                 size="medium"
-                onPress={() => Linking.openURL(`${BOT_URL}?start=${code.code}`)}
+                onPress={() => Linking.openURL(`${BOT_URL}?start=${activeCode.code}`)}
                 style={{ borderRadius: 14, height: 44, alignSelf: 'stretch' }}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Icon name="clock" size={12} color={c.secondary} strokeWidth={2.2} />
                 <Text variant="caption" color="secondary">
-                  Expires in 10 min
+                  Expires in {codeLeftMin} min · waiting for the bot…
                 </Text>
               </View>
             </View>
@@ -374,7 +399,7 @@ export default function Settings() {
           tile="#0E7A4B"
           title="Agent permissions"
           value={perms.data?.agentEnabled === false ? 'Stopped' : perms.data?.level}
-          onPress={() => router.push('/activity')}
+          onPress={() => router.navigate('/activity')}
         />
         <ListRow
           icon="logout"
@@ -383,8 +408,12 @@ export default function Settings() {
           destructive
           last
           onPress={async () => {
+            // A shared phone must not keep getting this account's pushes.
+            if (pushEnabled) {
+              await disableNotifications().catch(() => undefined);
+              setPushEnabled(false);
+            }
             await signOut();
-            queryClient.clear();
             router.replace('/login');
           }}
         />

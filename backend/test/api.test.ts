@@ -6,7 +6,7 @@ import { MAX_TOOL_CALLS, chat } from '../src/agent/agent';
 import type { LlmProvider } from '../src/agent/llm/provider';
 import { runTool } from '../src/agent/tools';
 import { DEMO } from '../src/db/demo';
-import { accounts, agentActions, permissions } from '../src/db/schema';
+import { accounts, agentActions, alerts, permissions } from '../src/db/schema';
 import { checkPolicy } from '../src/policy/policyGuard';
 import { MAX_AUDIO_BYTES, type SttProvider } from '../src/stt/groq';
 import { setup } from './helpers';
@@ -100,6 +100,27 @@ describe('auth and basics', () => {
     expect(p2.body.items[0]!.occurredAt <= p1.body.items[9]!.occurredAt).toBe(true);
     expect(new Set([...p1.body.items, ...p2.body.items].map((x) => x.id)).size).toBe(20);
     expect((await t.call('POST', '/transactions/voice')).body).toMatchObject({ error: { code: 'STT_UNAVAILABLE' } });
+  });
+
+  it('expenses land in the audit log; absurd amounts are refused with 400', async () => {
+    const tx = await t.call<Transaction>('POST', '/transactions', { amount: 12_000, category: 'food', description: 'Somsa' });
+    expect(tx.status).toBe(201);
+    const log = await t.call<Page<AuditEntry>>('GET', '/audit');
+    expect(log.body.items[0]).toMatchObject({ event: 'expense.manual', decision: 'info', actor: 'user' });
+    const big = await t.call('POST', '/transactions', { amount: 5_000_000_000, category: 'food', description: 'Typo' });
+    expect(big).toMatchObject({ status: 400, body: { error: { code: 'INVALID_ARGS' } } });
+    const dep = await t.call('POST', '/accounts/deposit', { to: 'card', amount: 5_000_000_000 });
+    expect(dep.status).toBe(400);
+  });
+
+  it('anomaly (PLAN.md §9): a 500 000 shopping spend against a small usual one raises an alert once', async () => {
+    const tx = await t.call<Transaction>('POST', '/transactions', { amount: 500_000, category: 'shopping', description: 'Texnomart' });
+    expect(tx.status).toBe(201);
+    const rows = await t.db.select().from(alerts).where(eq(alerts.userId, DEMO.id));
+    expect(rows.find((a) => a.kind === 'anomaly')).toMatchObject({ key: tx.body.id });
+    await t.call('POST', '/transactions', { amount: 15_000, category: 'shopping', description: 'Socks' });
+    const after = await t.db.select().from(alerts).where(eq(alerts.userId, DEMO.id));
+    expect(after.filter((a) => a.kind === 'anomaly')).toHaveLength(1);
   });
 
   it('daily summary for the seeded day: 93 548 allowance in a 31-day month', async () => {
@@ -246,8 +267,25 @@ describe('agent actions and audit (demo scenario §15)', () => {
     const next = await t.call<ChatResponse>('POST', '/agent/chat', { message: 'move 20000 to savings' });
     expect(next.body.actions[0]).toMatchObject({ status: 'blocked' });
     expect(next.body.reply).toMatch(/KILL_SWITCH_ACTIVE/);
-    const back = await t.call<Permissions>('PUT', '/permissions', {});
+    // Editing settings while stopped keeps the agent stopped; only an explicit agentEnabled: true turns it back on, at L1.
+    const still = await t.call<Permissions>('PUT', '/permissions', { level: 'L3' });
+    expect(still.body).toMatchObject({ agentEnabled: false });
+    const back = await t.call<Permissions>('PUT', '/permissions', { level: 'L3', agentEnabled: true });
     expect(back.body).toMatchObject({ agentEnabled: true, level: 'L1', perActionLimit: 0 });
+  });
+
+  it('a wild amount from the agent is blocked and logged, never a server error', async () => {
+    const res = await t.call<ChatResponse>('POST', '/agent/chat', { message: 'move 5000000000 to savings' });
+    expect(res.status).toBe(200);
+    expect(res.body.actions[0]).toMatchObject({ status: 'blocked' });
+    expect(res.body.reply).toMatch(/PER_ACTION_LIMIT/);
+  });
+
+  it('a rejected action that was approved a moment earlier stays executed', async () => {
+    const a = (await t.call<ChatResponse>('POST', '/agent/chat', { message: 'move 20000 to savings' })).body.actions[0]!;
+    expect((await t.call<AgentAction>('POST', `/agent/actions/${a.id}/approve`)).body.status).toBe('executed');
+    expect((await t.call('POST', `/agent/actions/${a.id}/reject`)).body).toMatchObject({ error: { code: 'NOT_PENDING' } });
+    expect((await t.call<AgentAction[]>('GET', '/agent/actions')).body.find((x) => x.id === a.id)?.status).toBe('executed');
   });
 
   it('approval re-checks the rules: lowering the level after proposing blocks it', async () => {

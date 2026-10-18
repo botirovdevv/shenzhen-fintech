@@ -11,11 +11,11 @@ import { cardAuthorizations, cards } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { toCardAuthorization, toPaymentCard } from '../lib/serialize';
-import { parse } from '../lib/validate';
+import { amountSchema, parse } from '../lib/validate';
 
 const patchBody = z.object({ frozen: z.boolean().optional(), blockOverBudget: z.boolean().optional() });
 const simulateBody = z.object({
-  amount: z.number().int().positive(),
+  amount: amountSchema,
   merchant: z.string().trim().min(1).max(40),
   mcc: z
     .string()

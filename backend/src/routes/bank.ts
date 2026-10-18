@@ -9,18 +9,18 @@ import { openSandboxAccounts, userAccounts } from '../bank/mockBank';
 import { deposit, moveMoney, setBalance } from '../bank/money';
 import { permissions } from '../db/schema';
 import { toAccount, toTransaction } from '../lib/serialize';
-import { parse } from '../lib/validate';
+import { amountSchema, MAX_AMOUNT, parse } from '../lib/validate';
 import { clampLimits } from '../policy/limits';
 
 export const scopeSchema = z.enum(['read_balance', 'read_transactions', 'transfer_own'] satisfies Scope[]);
 export const levelSchema = z.enum(['L0', 'L1', 'L2', 'L3'] satisfies PermissionLevel[]);
 const connectBody = z.object({ scopes: z.array(scopeSchema).max(3), level: levelSchema });
 const accountType = z.enum(['card', 'savings', 'cash']);
-// Up to 10 billion minor units in one go, so a typo can't make a balance absurd.
-const amount = z.number().int().positive().max(10_000_000_000);
+// Capped so a typo can't make a balance absurd (or overflow the int4 columns).
+const amount = amountSchema;
 const depositBody = z.object({ to: accountType, amount, description: z.string().trim().max(100).optional() });
 const transferBody = z.object({ from: accountType, to: accountType, amount });
-const balanceBody = z.object({ account: accountType, balance: z.number().int().min(0).max(10_000_000_000) });
+const balanceBody = z.object({ account: accountType, balance: z.number().int().min(0).max(MAX_AMOUNT, 'That amount is too large.') });
 
 export async function bankRoutes(app: FastifyInstance) {
   const { db } = app;

@@ -49,7 +49,7 @@ export default function ActionSheet() {
     ? [
         { ok: true, text: 'Your own accounts only (Card → Savings)' },
         { ok: !!p && amount <= p.perActionLimit, text: `Under the ${formatAmount(p?.perActionLimit ?? 0, cur)} per-action limit` },
-        { ok: !!p && amount <= p.dailyLimit, text: `Today’s agent total stays under ${formatAmount(p?.dailyLimit ?? 0, cur)}` },
+        { ok: !!p && amount <= p.dailyLimit, text: `Within the ${formatAmount(p?.dailyLimit ?? 0, cur)} daily agent limit` },
         { ok: (card?.balance ?? 0) >= amount, text: 'Card balance covers the amount' },
       ]
     : [{ ok: true, text: 'Budgets never move money' }];
@@ -66,9 +66,15 @@ export default function ActionSheet() {
   };
   const onReject = async () => {
     setError(null);
-    await reject.mutateAsync(a.id);
-    haptic('light');
+    try {
+      await reject.mutateAsync(a.id);
+      haptic('light');
+    } catch (e) {
+      haptic('warning');
+      setError(errorMessage(e));
+    }
   };
+  const deciding = approve.isPending || reject.isPending;
 
   const statusBadge: Record<string, { label: string; icon: IconName; bg: string; fg: string }> = {
     pending: { label: 'Needs your approval', icon: 'clock', bg: c.warnTint, fg: c.warnInk },
@@ -78,7 +84,7 @@ export default function ActionSheet() {
     blocked: { label: 'Blocked by policy', icon: 'ban', bg: c.dangerTint, fg: c.dangerInk },
     expired: { label: 'Expired', icon: 'clock', bg: c.fill, fg: c.secondary },
   };
-  const badge = statusBadge[a.status]!;
+  const badge = statusBadge[a.status] ?? statusBadge.pending!;
 
   return (
     <ScrollView
@@ -105,7 +111,7 @@ export default function ActionSheet() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <Icon name="bot" size={13} color={c.secondary} strokeWidth={2.2} />
           <Text variant="footnote" color="secondary">
-            Agent · {p?.level ?? 'L2'}
+            Agent · {p?.level ?? '…'}
           </Text>
         </View>
       </View>
@@ -145,7 +151,7 @@ export default function ActionSheet() {
               {isTransfer ? 'Move to Savings' : 'Set a monthly budget'}
             </Text>
             {isTransfer ? (
-              <Text variant="largeTitle" tabular style={{ fontSize: 44, lineHeight: 50 }}>
+              <Text variant="largeTitle" tabular style={{ fontSize: 44, lineHeight: 50 }} numberOfLines={1} adjustsFontSizeToFit>
                 {formatAmount(amount, cur)}{' '}
                 <Text variant="title2" color="secondary" style={{ fontSize: 22 }}>
                   {cur}
@@ -165,10 +171,10 @@ export default function ActionSheet() {
                 <Text variant="caption" color="secondary">
                   From
                 </Text>
-                <Text variant="callout" weight="600">
+                <Text variant="callout" weight="600" numberOfLines={1}>
                   {card?.name ?? 'Card'}
                 </Text>
-                <Text variant="caption" color="secondary" tabular>
+                <Text variant="caption" color="secondary" tabular numberOfLines={1}>
                   {formatAmount(card?.balance ?? 0, cur)}
                 </Text>
               </View>
@@ -181,19 +187,21 @@ export default function ActionSheet() {
                 <Text variant="callout" weight="600" color="accentInk">
                   Savings
                 </Text>
-                <Text variant="caption" color="accentInk" tabular>
+                <Text variant="caption" color="accentInk" tabular numberOfLines={1}>
                   {formatAmount(savings?.balance ?? 0, cur)}
                 </Text>
               </View>
             </View>
           ) : null}
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Icon name="bulb" size={18} color={c.accent} strokeWidth={2} />
-            <Text variant="callout" color="body" style={{ flex: 1 }}>
-              {a.reason}
-            </Text>
-          </View>
+          {isTransfer && a.status !== 'blocked' ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Icon name="bulb" size={18} color={c.accent} strokeWidth={2} />
+              <Text variant="callout" color="body" style={{ flex: 1 }}>
+                {a.reason}
+              </Text>
+            </View>
+          ) : null}
 
           <View style={{ backgroundColor: c.fill, borderRadius: 16, padding: 14, gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -226,8 +234,23 @@ export default function ActionSheet() {
           {a.status === 'pending' ? (
             <>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Button title="Reject" icon="x" variant="secondary" onPress={onReject} loading={reject.isPending} style={{ flex: 1 }} />
-                <Button title="Approve" icon="check" onPress={onApprove} loading={approve.isPending} style={{ flex: 1 }} />
+                <Button
+                  title="Reject"
+                  icon="x"
+                  variant="secondary"
+                  onPress={onReject}
+                  loading={reject.isPending}
+                  disabled={deciding}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Approve"
+                  icon="check"
+                  onPress={onApprove}
+                  loading={approve.isPending}
+                  disabled={deciding}
+                  style={{ flex: 1 }}
+                />
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: -6 }}>
                 <Icon name="clock" size={12} color={c.secondary} strokeWidth={2.2} />

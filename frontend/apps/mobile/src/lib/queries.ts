@@ -1,12 +1,11 @@
-import { focusManager, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { focusManager, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentAction, CreateTransactionBody, UpdateCardBody, UpdateMeBody, UpdatePermissionsBody } from '@femate/shared';
 import { AppState, Platform } from 'react-native';
 
 import { api } from './api';
+import { queryClient } from './queryClient';
 
-export const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
-});
+export { queryClient };
 
 // On a phone "window focus" is the app coming back to the foreground: refetch stale data then.
 if (Platform.OS !== 'web') {
@@ -34,6 +33,8 @@ export const keys = {
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
 export const useAccounts = () => useQuery({ queryKey: keys.accounts, queryFn: api.accounts });
 export const useTransactions = () => useQuery({ queryKey: keys.transactions, queryFn: () => api.transactions(50) });
+/** The full history screen: the server's page maximum. */
+export const useAllTransactions = () => useQuery({ queryKey: [...keys.transactions, 'all'], queryFn: () => api.transactions(100) });
 export const useDailySummary = () => useQuery({ queryKey: keys.daily, queryFn: api.dailySummary });
 // Until the server has /summary/insight it answers 404; the screens then just leave the check-in out.
 export const useInsight = () => useQuery({ queryKey: keys.insight, queryFn: api.insight, retry: false });
@@ -66,9 +67,10 @@ function useInvalidateMoney() {
     );
 }
 
+// onSettled: a timeout may still have saved it on the server, so refresh either way.
 export function useCreateTransaction() {
   const invalidate = useInvalidateMoney();
-  return useMutation({ mutationFn: (b: CreateTransactionBody) => api.createTransaction(b), onSuccess: invalidate });
+  return useMutation({ mutationFn: (b: CreateTransactionBody) => api.createTransaction(b), onSettled: invalidate });
 }
 
 export function useDeposit() {
@@ -88,7 +90,7 @@ export function useSetBalance() {
 
 export function useVoiceTransaction() {
   const invalidate = useInvalidateMoney();
-  return useMutation({ mutationFn: api.voiceTransaction, onSuccess: invalidate });
+  return useMutation({ mutationFn: api.voiceTransaction, onSettled: invalidate });
 }
 
 export const useSimulate = (currentCostPerDay: number, alternativeCostPerDay: number, daysPerMonth: number) =>
@@ -111,17 +113,17 @@ export function useRejectAction() {
 
 export function useApplyRecommendation() {
   const invalidate = useInvalidateMoney();
-  return useMutation({ mutationFn: api.applyRecommendation, onSuccess: invalidate });
+  return useMutation({ mutationFn: api.applyRecommendation, onSettled: invalidate });
 }
 
 export function useChat() {
   const invalidate = useInvalidateMoney();
-  return useMutation({ mutationFn: api.chat, onSuccess: invalidate });
+  return useMutation({ mutationFn: api.chat, onSettled: invalidate });
 }
 
 export function useKillSwitch() {
   const invalidate = useInvalidateMoney();
-  return useMutation({ mutationFn: api.killSwitch, onSuccess: invalidate });
+  return useMutation({ mutationFn: api.killSwitch, onSettled: invalidate });
 }
 
 export function useUpdatePermissions() {
@@ -133,9 +135,17 @@ export function useUpdateMe() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (b: UpdateMeBody) => api.updateMe(b),
-    onSuccess: (user) => {
+    onSuccess: async (user, b) => {
+      if (b.currency) {
+        // Every stored amount was converted: drop the old numbers first so nothing shows UZS figures as dollars.
+        qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+        qc.setQueryData(keys.me, user);
+        await qc.invalidateQueries();
+        return;
+      }
       qc.setQueryData(keys.me, user);
-      void qc.invalidateQueries({ queryKey: keys.daily });
+      // Income, fixed costs and the savings goal drive the daily limit, the check-in, reports and tips.
+      await Promise.all([['summary'], keys.recommendations].map((k) => qc.invalidateQueries({ queryKey: k })));
     },
   });
 }

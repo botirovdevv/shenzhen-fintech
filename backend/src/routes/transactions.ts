@@ -9,7 +9,8 @@ import { transactions, users } from '../db/schema';
 import { ApiError } from '../lib/errors';
 import { decodeCursor, encodeCursor } from '../lib/paginate';
 import { toTransaction } from '../lib/serialize';
-import { parse } from '../lib/validate';
+import { rangeFrom, rangeTo } from '../lib/time';
+import { amountSchema, parse } from '../lib/validate';
 import { MAX_AUDIO_BYTES } from '../stt/groq';
 
 const category = z.enum(CATEGORIES as [Category, ...Category[]]);
@@ -23,7 +24,7 @@ const listQuery = z.object({
 const createBody = z.union([
   z.object({ text: z.string().trim().min(1, 'Type what you spent, e.g. “taxi 20k”.').max(300) }),
   z.object({
-    amount: z.number().int().positive(),
+    amount: amountSchema,
     category,
     description: z.string().trim().min(1).max(200),
     currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
@@ -42,8 +43,8 @@ export async function transactionRoutes(app: FastifyInstance) {
       .where(
         and(
           eq(transactions.userId, req.userId),
-          q.from ? gte(transactions.occurredAt, new Date(q.from)) : undefined,
-          q.to ? lte(transactions.occurredAt, new Date(q.to)) : undefined,
+          q.from ? gte(transactions.occurredAt, rangeFrom(q.from)) : undefined,
+          q.to ? lte(transactions.occurredAt, rangeTo(q.to)) : undefined,
           q.category ? eq(transactions.category, q.category) : undefined,
           c ? or(lt(transactions.occurredAt, c.at), and(eq(transactions.occurredAt, c.at), lt(transactions.id, c.id))) : undefined,
         ),

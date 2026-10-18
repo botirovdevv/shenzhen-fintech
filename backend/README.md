@@ -13,7 +13,8 @@ src/
   policy/                       policyGuard.ts (checks 1–9), actions.ts (pending / approve / reject / expire), limits.ts
   agent/                        agent.ts (loop, ≤ 5 tool calls), tools.ts, prompts.ts, recommendations.ts, llm/ (provider, mock, openai)
   bank/                         mockBank.ts (sandbox accounts, atomic card → savings), expenses.ts
-  rules/                        dailyAllowance.ts, whatIf.ts, categorize.ts, smsParser.ts — deterministic numbers
+  rules/                        dailyAllowance.ts, whatIf.ts, anomaly.ts, monthPlan.ts, categorize.ts, smsParser.ts — deterministic numbers
+  notify/                       notify.ts (Telegram + Expo push), spendingAlerts.ts (day over plan, category up, anomaly)
   audit/audit.ts                append-only log, card numbers masked
   db/                           schema.ts, migrations/, demo.ts (Aziz), seed.ts, migrate.ts
 test/                           Vitest on PGlite (in-process Postgres, no server needed)
@@ -26,17 +27,20 @@ Node 20+ and pnpm. Shared API types come from `../frontend/packages/shared` (`@f
 ```bash
 cd backend
 pnpm install
-pnpm test          # 76 tests: rules, every Policy Guard check, demo scenario, agent loop, SMS parser, bot, card
+pnpm test          # 92 tests: rules, every Policy Guard check, demo scenario, races, agent loop, SMS parser, bot, card, anomaly
 pnpm typecheck
 ```
 
-To run the server locally you need a Postgres. The simplest is the VM's, through an SSH tunnel:
+To run the server locally you need a Postgres 16. With Docker:
 
 ```bash
-ssh -i <key> -L 5433:127.0.0.1:5433 ubuntu@141.147.9.141   # keep open
-cp .env.example .env    # set DATABASE_URL to the VM password (in ~/femate/backend/.env on the VM)
-pnpm dev                # http://localhost:3000/api/v1/health
+docker run -d --name femate-pg -p 5433:5432 -e POSTGRES_USER=femate -e POSTGRES_PASSWORD=femate -e POSTGRES_DB=femate postgres:16
+cp .env.example .env      # mock LLM, demo user (aziz@femate.uz / demo1234) seeded on start
+pnpm dev                  # http://localhost:3000/api/v1/health
 ```
+
+(Team: the VM's database also works through `ssh -i <key> -L 5433:127.0.0.1:5433 ubuntu@141.147.9.141`, with the VM's
+password in `DATABASE_URL`.)
 
 After changing `src/db/schema.ts`: `pnpm db:generate --name <change>` and commit the new migration.
 The server applies pending migrations on start.
@@ -103,7 +107,15 @@ transaction. Every decision goes to `card_authorizations` (idempotent on Lithic'
 - With `LITHIC_API_KEY` empty, `GET /card` answers `available: false` and the app says the card is off.
 - Purchases are recorded at authorization. Clearing and reversals (amount changes, refunds) aren't followed yet.
 
-## Not yet (pass 2)
+## Alerts
 
-- Anomaly alerts
-- Claude provider (`LLM_PROVIDER` is `mock` or `openai` so far)
+After every recorded expense (`notify/spendingAlerts.ts`), each sent once to Telegram and Expo push:
+
+- **Anomaly** (PLAN.md §9, `rules/anomaly.ts`): a spend over 3 × its category's 30-day median and at least 100 000 UZS.
+- **Day over plan**: the first time today's spending passes the daily allowance.
+- **Category up**: a category's last 7 days at least 30 % above its usual week.
+
+## LLM providers
+
+`LLM_PROVIDER=mock` (no key; an intent matcher that calls the same tools) or `openai` (`OPENAI_API_KEY`,
+`OPENAI_MODEL`, default `gpt-5-mini`). Both implement `agent/llm/provider.ts`; others plug in the same way.

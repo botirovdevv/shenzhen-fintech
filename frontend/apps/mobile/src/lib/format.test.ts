@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatAmount, formatMoney, formatUZS, formatWhole, parseAmountInput, parseWhole, shortAmount } from './format';
+import { amountInputValue, formatAmount, formatMoney, formatUZS, formatWhole, parseAmountInput, parseWhole, shortAmount } from './format';
 
 const nb = ' ';
 
@@ -45,5 +45,19 @@ describe('other currencies', () => {
     expect(parseAmountInput('', 'USD')).toBe(0);
     expect(parseWhole('1 250', 'USD')).toBe(125_000);
     expect(formatWhole(33_058, 'USD')).toBe('331');
+  });
+});
+
+describe('amount inputs and short amounts', () => {
+  it('amountInputValue keeps cents so "All" never asks for more than there is', () => {
+    expect(amountInputValue(33058, 'USD')).toBe('330.58');
+    expect(amountInputValue(33000, 'USD')).toBe('330');
+    expect(amountInputValue(4_000_000, 'UZS')).toBe('4000000');
+    expect(parseAmountInput(amountInputValue(33058, 'USD'), 'USD')).toBe(33058);
+  });
+  it('shortAmount never prints 0k', () => {
+    expect(shortAmount(400, 'UZS')).toBe('400');
+    expect(shortAmount(20_000, 'UZS')).toBe('20k');
+    expect(shortAmount(2_500_000, 'UZS')).toBe('2.5M');
   });
 });

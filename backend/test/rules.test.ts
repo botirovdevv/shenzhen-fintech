@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildRecommendations } from '../src/agent/recommendations';
 import { maskCards } from '../src/lib/format';
 import { dayStart, daysInMonth, tashkentDate } from '../src/lib/time';
+import { isAnomaly, median } from '../src/rules/anomaly';
 import { categorize, parseUzbekNumber } from '../src/rules/categorize';
 import { dailyAllowance, summarize } from '../src/rules/dailyAllowance';
 import { whatIf } from '../src/rules/whatIf';
@@ -73,4 +74,15 @@ describe('recommendations', () => {
 it('masks card numbers', () => {
   expect(maskCards('to card 8600 1234 5678 4471 now')).toBe('to card 8600 **** **** 4471 now');
   expect(maskCards('8600123456784471')).toBe('8600 **** **** 4471');
+});
+
+describe('anomaly rule', () => {
+  it('flags > 3x the 30-day category median and at least 100 000', () => {
+    expect(median([10, 30, 20])).toBe(20);
+    expect(median([10, 20, 30, 40])).toBe(25);
+    expect(isAnomaly(500_000, [40_000, 60_000, 50_000], 100_000).anomaly).toBe(true);
+    expect(isAnomaly(140_000, [40_000, 60_000, 50_000], 100_000).anomaly).toBe(false); // under 3x
+    expect(isAnomaly(90_000, [10_000, 20_000], 100_000).anomaly).toBe(false); // under 100 000
+    expect(isAnomaly(500_000, [], 100_000).anomaly).toBe(false); // nothing to compare against
+  });
 });
