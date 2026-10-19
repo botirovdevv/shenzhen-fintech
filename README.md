@@ -12,7 +12,7 @@ saved into Savings **only within the permission level and limits you set**.
 
 | | |
 |---|---|
-| **Android app** | Install the APK (link in the submission email / GitHub Releases) |
+| **Android app** | [Download the APK](https://github.com/botirovdevv/shenzhen-fintech/releases/download/v1.0.0/shenzhen-fintech-v1.0.0.apk) (v1.0.0, 27.7 MB — [all releases](https://github.com/botirovdevv/shenzhen-fintech/releases)); allow installs from unknown sources |
 | **Demo account** | `aziz@femate.uz` / `demo1234` — or tap **Use demo account** on the sign-in screen |
 | **Live API** | https://femate-api.usm0n.uz/api/v1/health |
 | **Telegram bot** | [@femate_uz_bot](https://t.me/femate_uz_bot) — link it in the app: Settings → Telegram bot → Get a link code |
